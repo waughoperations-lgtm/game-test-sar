@@ -35,6 +35,8 @@
   #torchBtn { top: 12px; right: 12px; font-size: 16px; font-family: inherit; border: none;
               cursor: pointer; pointer-events: auto; }
   #torchBtn.off { color: #8b96b4; }
+  #darkvig { position: fixed; inset: 0; z-index: 3; pointer-events: none;
+             box-shadow: inset 0 0 230px 90px rgba(0,0,0,0.88); }
   #vignette { position: fixed; inset: 0; z-index: 4; pointer-events: none; opacity: 0;
               box-shadow: inset 0 0 170px 55px rgba(150,0,0,0.85); transition: opacity .2s; }
 </style>
@@ -49,6 +51,7 @@
   <div class="card" id="meterLabel">Danger</div>
   <div id="meterBar"><div id="meterFill"></div></div>
 </div>
+<div id="darkvig"></div>
 <div id="vignette"></div>
 
 <div class="overlay" id="startOverlay">
@@ -81,10 +84,10 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputEncoding = THREE.sRGBEncoding;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.15;
+renderer.toneMappingExposure = 0.92;
 
 const scene = new THREE.Scene();
-scene.fog = new THREE.Fog(0x0b1428, 22, 80);
+scene.fog = new THREE.Fog(0x06070c, 9, 44);
 const camera = new THREE.PerspectiveCamera(72, 1, 0.1, 400);
 
 function resize() {
@@ -95,8 +98,8 @@ function resize() {
 window.addEventListener('resize', resize); resize();
 
 // ---------- Night lighting ----------
-scene.add(new THREE.HemisphereLight(0x33456e, 0x111a12, 0.5));
-const moonLight = new THREE.DirectionalLight(0x9fb6e8, 0.35);
+scene.add(new THREE.HemisphereLight(0x241a22, 0x070605, 0.28));
+const moonLight = new THREE.DirectionalLight(0x9a5a4a, 0.28);
 moonLight.position.set(-35, 50, -25);
 moonLight.castShadow = true;
 moonLight.shadow.mapSize.set(2048, 2048);
@@ -153,7 +156,7 @@ dirtTex.wrapS = dirtTex.wrapT = THREE.RepeatWrapping;
 // ---------- Night sky, moon and stars ----------
 const skyTex = new THREE.CanvasTexture(makeCanvas(x => {
   const g = x.createLinearGradient(0, 0, 0, 256);
-  g.addColorStop(0, '#060b1c'); g.addColorStop(0.55, '#0d1730'); g.addColorStop(1, '#1c2c4e');
+  g.addColorStop(0, '#010104'); g.addColorStop(0.6, '#080409'); g.addColorStop(1, '#1c0709');
   x.fillStyle = g; x.fillRect(0, 0, 256, 256);
 }));
 const sky = new THREE.Mesh(new THREE.SphereGeometry(220, 20, 14),
@@ -172,17 +175,17 @@ const stars = new THREE.Points(starGeo,
 scene.add(stars);
 
 const moon = new THREE.Mesh(new THREE.SphereGeometry(7, 16, 12),
-  new THREE.MeshBasicMaterial({ color: 0xf3eeda, fog: false }));
+  new THREE.MeshBasicMaterial({ color: 0x8f2a1e, fog: false }));
 moon.position.set(-90, 110, -70);
 scene.add(moon);
-const moonGlow = new THREE.Mesh(new THREE.SphereGeometry(10, 16, 12),
-  new THREE.MeshBasicMaterial({ color: 0xf3eeda, transparent: true, opacity: 0.18, fog: false }));
+const moonGlow = new THREE.Mesh(new THREE.SphereGeometry(11, 16, 12),
+  new THREE.MeshBasicMaterial({ color: 0x8f2a1e, transparent: true, opacity: 0.28, fog: false }));
 moonGlow.position.copy(moon.position);
 scene.add(moonGlow);
 
 // Dim night clouds
 const clouds = [];
-const cloudMat = new THREE.MeshLambertMaterial({ color: 0x2c3a5c, transparent: true, opacity: 0.8 });
+const cloudMat = new THREE.MeshLambertMaterial({ color: 0x120a0e, transparent: true, opacity: 0.9 });
 for (let i = 0; i < 5; i++) {
   const g = new THREE.Group();
   const n = 3 + (Math.random() * 3 | 0);
@@ -237,6 +240,9 @@ const litGlassMat = new THREE.MeshStandardMaterial({
 });
 const buildings = [];
 
+// Lights that flicker unsteadily for a haunted feel (filled in as we build the town)
+const flickerLights = [];
+
 function addWindow(x, y, z, rotY) {
   const g = new THREE.Group();
   const frame = new THREE.Mesh(new THREE.BoxGeometry(1.35, 1.55, 0.12), whiteMat);
@@ -281,6 +287,7 @@ function makeHouse(bx, bz, w, d, color, roofColor, chimney) {
   const doorLight = new THREE.PointLight(0xffb45e, 0.9, 10, 2);
   doorLight.position.set(bx, 2, bz + d / 2 + 0.8);
   scene.add(doorLight);
+  flickerLights.push({ light: doorLight, base: 0.9, seed: bx * 1.7 + bz });
 
   if (chimney) {
     const c = shadowify(new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.6, 0.8),
@@ -362,14 +369,15 @@ function makeLamp(x, z) {
   const light = new THREE.PointLight(0xffc964, 1.1, 14, 2);
   light.position.set(x, 3.1, z);
   scene.add(pole, bulb, light);
+  flickerLights.push({ light, base: 1.1, mat: bulb.material, matBase: 2, seed: x * 2.3 + z * 1.1 });
   circles.push({ x, z, r: 0.35 });
 }
 [[2.4, 20], [-2.4, 12], [2.4, 2], [-10, -6], [10, -6]].forEach(p => makeLamp(p[0], p[1]));
 
 // ---------- Fireflies ----------
 const fireflies = [];
-const fireflyMat = new THREE.MeshBasicMaterial({ color: 0xd8ff7a, fog: false });
-for (let i = 0; i < 18; i++) {
+const fireflyMat = new THREE.MeshBasicMaterial({ color: 0xff5a2a, fog: false });
+for (let i = 0; i < 10; i++) {
   const f = new THREE.Mesh(new THREE.SphereGeometry(0.06, 5, 4), fireflyMat.clone());
   f.material.transparent = true;
   const cx = Math.random() * 60 - 30, cz = Math.random() * 60 - 30;
@@ -381,32 +389,46 @@ for (let i = 0; i < 18; i++) {
 // ---------- The Monster ----------
 // A dark floating creature with big glowing eyes that hunts the player.
 const monsterGroup = new THREE.Group();
-const monEyeMat = new THREE.MeshBasicMaterial({ color: 0xfff2a0, fog: false });
+const monEyeMat = new THREE.MeshBasicMaterial({ color: 0xff2a1a, fog: false });
+let monEyeGlow = null;
 function makeMonster() {
-  const bodyMat = new THREE.MeshStandardMaterial({ color: 0x241633, roughness: 0.85, emissive: 0x130a1f, emissiveIntensity: 0.5 });
-  const dark = new THREE.MeshStandardMaterial({ color: 0x0a0510, roughness: 0.6 });
-  // Big lumpy body
-  const body = shadowify(new THREE.Mesh(new THREE.SphereGeometry(1.05, 16, 14), bodyMat));
-  body.position.y = 1.35; body.scale.set(1, 1.15, 1);
-  // A couple of horns
-  const hornMat = new THREE.MeshStandardMaterial({ color: 0x3a2350, roughness: 0.7 });
-  const hornL = shadowify(new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.75, 8), hornMat));
-  hornL.position.set(-0.4, 2.5, 0); hornL.rotation.z = 0.25;
-  const hornR = hornL.clone(); hornR.position.x = 0.4; hornR.rotation.z = -0.25;
-  // Glowing eyes (with a light so they light up the scene)
-  const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.22, 12, 10), monEyeMat);
-  eyeL.position.set(-0.34, 1.7, 0.85);
-  const eyeR = eyeL.clone(); eyeR.position.x = 0.34;
-  const pupL = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 7), dark);
-  pupL.position.set(-0.34, 1.7, 1.02);
-  const pupR = pupL.clone(); pupR.position.x = 0.34;
-  const eyeGlow = new THREE.PointLight(0xffe27a, 0.9, 9, 2);
-  eyeGlow.position.set(0, 1.7, 0.9);
-  // Wispy arms
-  const armL = shadowify(new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.05, 1.1, 8), bodyMat));
-  armL.position.set(-1, 1.3, 0.2); armL.rotation.z = 0.5;
-  const armR = armL.clone(); armR.position.x = 1; armR.rotation.z = -0.5;
-  monsterGroup.add(body, hornL, hornR, eyeL, eyeR, pupL, pupR, eyeGlow, armL, armR);
+  const bodyMat = new THREE.MeshStandardMaterial({ color: 0x0b0a12, roughness: 0.92, emissive: 0x1a0406, emissiveIntensity: 0.35 });
+  const dark = new THREE.MeshStandardMaterial({ color: 0x050308, roughness: 0.6 });
+  const toothMat = new THREE.MeshStandardMaterial({ color: 0xd8d2c4, roughness: 0.5, emissive: 0x140f0a, emissiveIntensity: 0.3 });
+  // Tall, hunched, looming body
+  const body = shadowify(new THREE.Mesh(new THREE.SphereGeometry(1.0, 16, 14), bodyMat));
+  body.position.y = 1.45; body.scale.set(0.95, 1.5, 0.95);
+  // Long, sharp horns
+  const hornMat = new THREE.MeshStandardMaterial({ color: 0x17141c, roughness: 0.7 });
+  const hornL = shadowify(new THREE.Mesh(new THREE.ConeGeometry(0.2, 1.15, 8), hornMat));
+  hornL.position.set(-0.46, 2.95, 0); hornL.rotation.z = 0.4;
+  const hornR = hornL.clone(); hornR.position.x = 0.46; hornR.rotation.z = -0.4;
+  // Glaring red eyes with a red glow so you spot them in the dark
+  const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.2, 12, 10), monEyeMat);
+  eyeL.position.set(-0.32, 1.78, 0.82);
+  const eyeR = eyeL.clone(); eyeR.position.x = 0.32;
+  const pupL = new THREE.Mesh(new THREE.SphereGeometry(0.075, 8, 7), dark);
+  pupL.position.set(-0.32, 1.78, 0.99);
+  const pupR = pupL.clone(); pupR.position.x = 0.32;
+  monEyeGlow = new THREE.PointLight(0xff2a10, 1.1, 11, 2);
+  monEyeGlow.position.set(0, 1.78, 0.9);
+  // Jagged, toothy grin
+  const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.92, 0.36, 0.14), dark);
+  mouth.position.set(0, 1.3, 0.85);
+  monsterGroup.add(mouth);
+  for (let i = 0; i < 7; i++) {
+    const tx = -0.36 + i * 0.12;
+    const tUp = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.17, 5), toothMat);
+    tUp.position.set(tx, 1.38, 0.92); tUp.rotation.x = Math.PI;   // fangs pointing down
+    const tDn = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.17, 5), toothMat);
+    tDn.position.set(tx + 0.06, 1.22, 0.92);                      // fangs pointing up
+    monsterGroup.add(tUp, tDn);
+  }
+  // Long, thin clawed arms
+  const armL = shadowify(new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.03, 1.55, 8), bodyMat));
+  armL.position.set(-1.05, 1.15, 0.2); armL.rotation.z = 0.6;
+  const armR = armL.clone(); armR.position.x = 1.05; armR.rotation.z = -0.6;
+  monsterGroup.add(body, hornL, hornR, eyeL, eyeR, pupL, pupR, monEyeGlow, armL, armR);
   monsterGroup.visible = false;
   scene.add(monsterGroup);
 }
@@ -560,6 +582,13 @@ const meterLabel = document.getElementById('meterLabel');
 const timerEl = document.getElementById('timer');
 
 // ---------- Main loop ----------
+// Organic flicker: mostly steady near 1, with occasional unsettling dips.
+function flick(t, s) {
+  let v = 0.82 + 0.12 * Math.sin(t * 11 + s) + 0.08 * Math.sin(t * 27 + s * 2.3);
+  if (Math.sin(t * 3.3 + s) > 0.93) v *= 0.4;
+  return Math.max(0.22, Math.min(1.1, v));
+}
+
 const clock = new THREE.Clock();
 function animate() {
   requestAnimationFrame(animate);
@@ -577,6 +606,14 @@ function animate() {
     f.m.position.y = 1.2 + Math.sin(t * 1.7 + f.ph) * 0.5;
     f.m.material.opacity = 0.35 + Math.abs(Math.sin(t * 2.2 + f.ph)) * 0.65;
   });
+
+  // Flicker the lamps, doorway lights and windows
+  flickerLights.forEach(o => {
+    const v = flick(t, o.seed);
+    o.light.intensity = o.base * v;
+    if (o.mat) o.mat.emissiveIntensity = o.matBase * (0.45 + v * 0.55);
+  });
+  litGlassMat.emissiveIntensity = 1.6 * flick(t, 7.7);
 
   if (playing) {
     let fwd = 0, side = 0;
@@ -667,7 +704,11 @@ function animate() {
     const faceZ = (monster.state === 'chase' ? player.z : monster.targetZ) - monster.z;
     monsterGroup.rotation.y = Math.atan2(faceX, faceZ);
     monsterGroup.position.set(monster.x, Math.sin(t * 2.2) * 0.12, monster.z);
-    monEyeMat.color.setHex(monster.state === 'chase' ? 0xff4a2e : 0xfff2a0);
+    // Eyes smoulder red, and flare brighter while hunting
+    const hunting = monster.state === 'chase';
+    const pulse = hunting ? 0.5 + 0.5 * Math.abs(Math.sin(t * 6)) : 0.35;
+    monEyeMat.color.setRGB(0.6 + pulse * 0.4, 0.02 + pulse * 0.05, 0.0);
+    if (monEyeGlow) monEyeGlow.intensity = (hunting ? 1.6 : 1.0) * (0.7 + pulse * 0.5);
   }
 
   camera.position.set(player.x, 1.6, player.z);
@@ -675,7 +716,8 @@ function animate() {
   camera.rotation.y = player.yaw;
   camera.rotation.x = player.pitch;
 
-  // Flashlight follows the camera
+  // Flashlight follows the camera, flickering like a dying torch
+  flashlight.intensity = 2.2 * Math.max(0.5, flick(t, 1.3));
   flashlight.position.copy(camera.position);
   const dir = new THREE.Vector3(
     -Math.sin(player.yaw) * Math.cos(player.pitch),
