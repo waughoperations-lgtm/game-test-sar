@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Hide and Seek Town — Night</title>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;900&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; overflow: hidden; font-family: 'Nunito', system-ui, sans-serif; background: #0a1020; }
+  #game { position: fixed; inset: 0; touch-action: none; }
+  .hud { position: fixed; z-index: 5; pointer-events: none; }
+  .card { background: rgba(16,24,42,0.82); border-radius: 14px; padding: 8px 16px;
+          box-shadow: 0 3px 12px rgba(0,0,0,0.5); font-weight: 900; color: #ffe9b0; }
+  #timer { top: 12px; left: 12px; font-size: 22px; }
+  #foundBox { top: 12px; right: 12px; font-size: 18px; display: flex; gap: 8px; align-items: center; }
+  .dot { width: 16px; height: 16px; border-radius: 50%; border: 3px solid #ffe9b0; background: transparent; }
+  .dot.on { background: #ffe9b0; }
+  #message { top: 64px; left: 50%; transform: translateX(-50%); font-size: 17px;
+             opacity: 0; transition: opacity .3s; max-width: 90vw; text-align: center; }
+  #meterWrap { bottom: 18px; left: 50%; transform: translateX(-50%); width: min(300px, 70vw); text-align: center; }
+  #meterLabel { font-size: 14px; margin-bottom: 5px; }
+  #meterBar { height: 14px; border-radius: 8px; background: rgba(16,24,42,0.8); overflow: hidden;
+              box-shadow: 0 2px 8px rgba(0,0,0,0.5); }
+  #meterFill { height: 100%; width: 0%; background: #4f9dde; border-radius: 8px; transition: width .3s, background .3s; }
+  .overlay { position: fixed; inset: 0; z-index: 10; background: rgba(5,10,22,0.72);
+             display: flex; align-items: center; justify-content: center; padding: 20px; }
+  .panel { background: #141d33; border: 1px solid #2a3a5f; border-radius: 22px; padding: 28px 26px;
+           max-width: 420px; width: 100%; text-align: center; box-shadow: 0 12px 40px rgba(0,0,0,0.6); color: #eef2ff; }
+  .panel h1 { font-size: 30px; font-weight: 900; margin-bottom: 10px; color: #ffe9b0; }
+  .panel p { font-size: 15px; font-weight: 700; line-height: 1.55; margin-bottom: 12px; color: #b9c4e0; }
+  .panel button { font-family: inherit; font-weight: 900; font-size: 19px; color: #1a1408; background: #ffd268;
+                  border: none; border-radius: 14px; padding: 14px 34px; cursor: pointer; margin-top: 6px;
+                  box-shadow: 0 4px 0 #b28a2e; }
+  .panel button:active { transform: translateY(3px); box-shadow: 0 1px 0 #b28a2e; }
+  .hidden { display: none !important; }
+  #endOverlay .big { font-size: 46px; margin-bottom: 4px; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div class="hud card" id="timer">2:00</div>
+<div class="hud card" id="foundBox">Found
+  <span class="dot" id="d0"></span><span class="dot" id="d1"></span><span class="dot" id="d2"></span>
+</div>
+<div class="hud card" id="message"></div>
+<div class="hud" id="meterWrap">
+  <div class="card" id="meterLabel">Giggle meter</div>
+  <div id="meterBar"><div id="meterFill"></div></div>
+</div>
+
+<div class="overlay" id="startOverlay">
+  <div class="panel">
+    <h1>Hide and Seek at Night</h1>
+    <p>It's dark out, and Pip, Momo and Zuzu are hiding in the town &mdash; inside the glowing houses or behind the bushes. You have a flashlight and 2 minutes. Find all 3!</p>
+    <p><b>Computer:</b> walk with W A S D or the arrow keys, click-and-drag to look around.<br><br>
+       <b>Phone or tablet:</b> slide your <b>left thumb</b> to walk, slide your <b>right thumb</b> to look around.</p>
+    <p>Your flashlight always points where you look. The giggle meter fills up when someone is close &mdash; walk right up to them to catch them!</p>
+    <button id="startBtn">Start seeking</button>
+  </div>
+</div>
+
+<div class="overlay hidden" id="endOverlay">
+  <div class="panel">
+    <div class="big" id="endEmoji">🎉</div>
+    <h1 id="endTitle">You found everyone!</h1>
+    <p id="endText"></p>
+    <button id="againBtn">Play again</button>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ---------- Renderer, scene, camera ----------
+const canvas = document.getElementById('game');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.15;
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.Fog(0x0b1428, 22, 80);
+const camera = new THREE.PerspectiveCamera(72, 1, 0.1, 400);
+
+function resize() {
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', resize); resize();
+
+// ---------- Night lighting ----------
+scene.add(new THREE.HemisphereLight(0x33456e, 0x111a12, 0.5));
+const moonLight = new THREE.DirectionalLight(0x9fb6e8, 0.35);
+moonLight.position.set(-35, 50, -25);
+moonLight.castShadow = true;
+moonLight.shadow.mapSize.set(2048, 2048);
+moonLight.shadow.camera.left = -50; moonLight.shadow.camera.right = 50;
+moonLight.shadow.camera.top = 50; moonLight.shadow.camera.bottom = -50;
+moonLight.shadow.camera.near = 5; moonLight.shadow.camera.far = 140;
+moonLight.shadow.bias = -0.0006;
+scene.add(moonLight);
+
+// Flashlight that follows where you look
+const flashlight = new THREE.SpotLight(0xfff1cf, 2.2, 42, Math.PI / 5.5, 0.45, 1.6);
+flashlight.castShadow = true;
+flashlight.shadow.mapSize.set(1024, 1024);
+flashlight.shadow.bias = -0.002;
+scene.add(flashlight);
+scene.add(flashlight.target);
+
+// ---------- Procedural textures ----------
+function makeCanvas(fn) {
+  const c = document.createElement('canvas'); c.width = c.height = 256;
+  fn(c.getContext('2d'));
+  return c;
+}
+const grassTex = new THREE.CanvasTexture(makeCanvas(x => {
+  x.fillStyle = '#5d8f47'; x.fillRect(0, 0, 256, 256);
+  for (let i = 0; i < 5000; i++) {
+    const g = 90 + Math.random() * 80;
+    x.fillStyle = 'rgba(' + (35 + Math.random() * 45) + ',' + g + ',' + (35 + Math.random() * 35) + ',0.4)';
+    x.fillRect(Math.random() * 256, Math.random() * 256, 2, 3 + Math.random() * 3);
+  }
+}));
+grassTex.wrapS = grassTex.wrapT = THREE.RepeatWrapping;
+grassTex.repeat.set(26, 26);
+
+const plasterTex = new THREE.CanvasTexture(makeCanvas(x => {
+  x.fillStyle = '#ffffff'; x.fillRect(0, 0, 256, 256);
+  for (let i = 0; i < 2200; i++) {
+    const v = 220 + Math.random() * 35;
+    x.fillStyle = 'rgba(' + v + ',' + v + ',' + v + ',0.5)';
+    x.fillRect(Math.random() * 256, Math.random() * 256, 3, 3);
+  }
+}));
+
+const dirtTex = new THREE.CanvasTexture(makeCanvas(x => {
+  x.fillStyle = '#c4ab7e'; x.fillRect(0, 0, 256, 256);
+  for (let i = 0; i < 2600; i++) {
+    const v = 130 + Math.random() * 90;
+    x.fillStyle = 'rgba(' + v + ',' + (v * 0.82 | 0) + ',' + (v * 0.55 | 0) + ',0.5)';
+    x.beginPath(); x.arc(Math.random() * 256, Math.random() * 256, 1 + Math.random() * 2.2, 0, 7); x.fill();
+  }
+}));
+dirtTex.wrapS = dirtTex.wrapT = THREE.RepeatWrapping;
+
+// ---------- Night sky, moon and stars ----------
+const skyTex = new THREE.CanvasTexture(makeCanvas(x => {
+  const g = x.createLinearGradient(0, 0, 0, 256);
+  g.addColorStop(0, '#060b1c'); g.addColorStop(0.55, '#0d1730'); g.addColorStop(1, '#1c2c4e');
+  x.fillStyle = g; x.fillRect(0, 0, 256, 256);
+}));
+const sky = new THREE.Mesh(new THREE.SphereGeometry(220, 20, 14),
+  new THREE.MeshBasicMaterial({ map: skyTex, side: THREE.BackSide, fog: false }));
+scene.add(sky);
+
+const starGeo = new THREE.BufferGeometry();
+const starPos = [];
+for (let i = 0; i < 500; i++) {
+  const a = Math.random() * Math.PI * 2, e = Math.random() * Math.PI * 0.46 + 0.06, r = 200;
+  starPos.push(Math.cos(a) * Math.cos(e) * r, Math.sin(e) * r, Math.sin(a) * Math.cos(e) * r);
+}
+starGeo.setAttribute('position', new THREE.Float32BufferAttribute(starPos, 3));
+const stars = new THREE.Points(starGeo,
+  new THREE.PointsMaterial({ color: 0xdfe8ff, size: 1.4, sizeAttenuation: false, fog: false }));
+scene.add(stars);
+
+const moon = new THREE.Mesh(new THREE.SphereGeometry(7, 16, 12),
+  new THREE.MeshBasicMaterial({ color: 0xf3eeda, fog: false }));
+moon.position.set(-90, 110, -70);
+scene.add(moon);
+const moonGlow = new THREE.Mesh(new THREE.SphereGeometry(10, 16, 12),
+  new THREE.MeshBasicMaterial({ color: 0xf3eeda, transparent: true, opacity: 0.18, fog: false }));
+moonGlow.position.copy(moon.position);
+scene.add(moonGlow);
+
+// Dim night clouds
+const clouds = [];
+const cloudMat = new THREE.MeshLambertMaterial({ color: 0x2c3a5c, transparent: true, opacity: 0.8 });
+for (let i = 0; i < 5; i++) {
+  const g = new THREE.Group();
+  const n = 3 + (Math.random() * 3 | 0);
+  for (let j = 0; j < n; j++) {
+    const s = new THREE.Mesh(new THREE.SphereGeometry(2 + Math.random() * 2.5, 8, 6), cloudMat);
+    s.position.set(j * 2.6 - n, Math.random() * 1.2, Math.random() * 2 - 1);
+    s.scale.y = 0.55;
+    g.add(s);
+  }
+  g.position.set(Math.random() * 160 - 80, 30 + Math.random() * 12, Math.random() * 160 - 80);
+  scene.add(g);
+  clouds.push({ g, speed: 0.5 + Math.random() * 0.7 });
+}
+
+// ---------- Ground + paths ----------
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(140, 140),
+  new THREE.MeshStandardMaterial({ map: grassTex, roughness: 1, metalness: 0 }));
+ground.rotation.x = -Math.PI / 2;
+ground.receiveShadow = true;
+scene.add(ground);
+
+function addPath(w, l, x, z, rotY) {
+  const t = dirtTex.clone(); t.needsUpdate = true;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(w / 3, l / 3);
+  const p = new THREE.Mesh(new THREE.PlaneGeometry(w, l),
+    new THREE.MeshStandardMaterial({ map: t, roughness: 1 }));
+  p.rotation.x = -Math.PI / 2; p.rotation.z = rotY || 0;
+  p.position.set(x, 0.02, z);
+  p.receiveShadow = true;
+  scene.add(p);
+}
+addPath(3.4, 42, 0, 8, 0);
+addPath(3.4, 44, 0, -6, Math.PI / 2);
+
+// ---------- Collision helpers ----------
+const WORLD = 38;
+const wallBoxes = [], circles = [];
+function shadowify(m) { m.castShadow = true; m.receiveShadow = true; return m; }
+
+function addBox(w, h, d, x, y, z, mat, solid) {
+  const m = shadowify(new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat));
+  m.position.set(x, y, z);
+  scene.add(m);
+  if (solid !== false) wallBoxes.push({ x1: x - w / 2, z1: z - d / 2, x2: x + w / 2, z2: z + d / 2 });
+  return m;
+}
+
+// ---------- Houses with glowing windows ----------
+const whiteMat = new THREE.MeshStandardMaterial({ color: 0xe8e2d4, roughness: 0.9 });
+const litGlassMat = new THREE.MeshStandardMaterial({
+  color: 0x3a2c10, emissive: 0xffb54d, emissiveIntensity: 1.6, roughness: 0.4
+});
+const buildings = [];
+
+function addWindow(x, y, z, rotY) {
+  const g = new THREE.Group();
+  const frame = new THREE.Mesh(new THREE.BoxGeometry(1.35, 1.55, 0.12), whiteMat);
+  const glass = new THREE.Mesh(new THREE.BoxGeometry(1.05, 1.25, 0.14), litGlassMat);
+  const barV = new THREE.Mesh(new THREE.BoxGeometry(0.09, 1.25, 0.16), whiteMat);
+  const barH = new THREE.Mesh(new THREE.BoxGeometry(1.05, 0.09, 0.16), whiteMat);
+  g.add(frame, glass, barV, barH);
+  g.position.set(x, y, z); g.rotation.y = rotY || 0;
+  scene.add(g);
+}
+
+function makeHouse(bx, bz, w, d, color, roofColor, chimney) {
+  const h = 3.4, t = 0.5, dw = 2.6, sw = (w - dw) / 2;
+  const wallMat = new THREE.MeshStandardMaterial({ color, map: plasterTex, roughness: 0.95 });
+  addBox(w, h, t, bx, h / 2, bz - d / 2, wallMat);
+  addBox(t, h, d, bx - w / 2, h / 2, bz, wallMat);
+  addBox(t, h, d, bx + w / 2, h / 2, bz, wallMat);
+  addBox(sw, h, t, bx - dw / 2 - sw / 2, h / 2, bz + d / 2, wallMat);
+  addBox(sw, h, t, bx + dw / 2 + sw / 2, h / 2, bz + d / 2, wallMat);
+
+  const roof = shadowify(new THREE.Mesh(new THREE.ConeGeometry(1, 1, 4),
+    new THREE.MeshStandardMaterial({ color: roofColor, flatShading: true, roughness: 0.9 })));
+  roof.rotation.y = Math.PI / 4;
+  roof.scale.set((w / 2 + 0.7) / 0.707, 2.1, (d / 2 + 0.7) / 0.707);
+  roof.position.set(bx, h + 1.05, bz);
+  scene.add(roof);
+  addBox(w + 0.9, 0.25, d + 0.9, bx, h + 0.05, bz,
+    new THREE.MeshStandardMaterial({ color: roofColor, roughness: 0.9 }), false);
+
+  addBox(0.22, h * 0.72, 0.7, bx - dw / 2 - 0.05, h * 0.36, bz + d / 2, whiteMat, false);
+  addBox(0.22, h * 0.72, 0.7, bx + dw / 2 + 0.05, h * 0.36, bz + d / 2, whiteMat, false);
+  addBox(dw + 0.55, 0.24, 0.7, bx, h * 0.72, bz + d / 2, whiteMat, false);
+  addBox(dw + 0.4, 0.14, 1.3, bx, 0.07, bz + d / 2 + 0.6,
+    new THREE.MeshStandardMaterial({ color: 0xa8977a, roughness: 1 }), false);
+
+  addWindow(bx - dw / 2 - sw / 2, 1.8, bz + d / 2 + 0.06, 0);
+  addWindow(bx + dw / 2 + sw / 2, 1.8, bz + d / 2 + 0.06, 0);
+  addWindow(bx - w / 2 - 0.06, 1.8, bz, Math.PI / 2);
+  addWindow(bx + w / 2 + 0.06, 1.8, bz, Math.PI / 2);
+
+  // Warm light spilling out of the doorway
+  const doorLight = new THREE.PointLight(0xffb45e, 0.9, 10, 2);
+  doorLight.position.set(bx, 2, bz + d / 2 + 0.8);
+  scene.add(doorLight);
+
+  if (chimney) {
+    const c = shadowify(new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.6, 0.8),
+      new THREE.MeshStandardMaterial({ color: 0x8a5a44, roughness: 1 })));
+    c.position.set(bx + w / 4, h + 1.9, bz - d / 5);
+    scene.add(c);
+  }
+  buildings.push({ x: bx, z: bz, d });
+}
+makeHouse(-14, -10, 10, 8, 0xf6d47c, 0xc25e4a, true);
+makeHouse( 14, -12,  9, 8, 0xf0a488, 0x7a5140, false);
+makeHouse(-17,  10,  8, 7, 0xaedbde, 0x3f7d84, true);
+makeHouse( 16,   8, 10, 9, 0xd4b9ee, 0x6a4d93, false);
+
+// ---------- Bushes with flowers ----------
+const bushes = [];
+const bushMats = [new THREE.MeshStandardMaterial({ color: 0x2d5e2b, roughness: 1 }),
+                  new THREE.MeshStandardMaterial({ color: 0x38702f, roughness: 1 })];
+const flowerColors = [0xd85a8c, 0xd9b93e, 0xcfd4e8, 0xd07a42];
+function makeBush(x, z) {
+  const g = new THREE.Group();
+  for (let i = 0; i < 4; i++) {
+    const s = shadowify(new THREE.Mesh(new THREE.SphereGeometry(0.7 + Math.random() * 0.5, 9, 7),
+      bushMats[i % 2]));
+    s.position.set(Math.random() * 1.2 - 0.6, 0.6 + Math.random() * 0.6, Math.random() * 1.2 - 0.6);
+    g.add(s);
+  }
+  if (Math.random() < 0.7) {
+    for (let i = 0; i < 5; i++) {
+      const f = new THREE.Mesh(new THREE.SphereGeometry(0.09, 6, 5),
+        new THREE.MeshStandardMaterial({ color: flowerColors[i % 4], roughness: 0.8 }));
+      const a = Math.random() * 6.28;
+      f.position.set(Math.cos(a) * 0.9, 1 + Math.random() * 0.7, Math.sin(a) * 0.9);
+      g.add(f);
+    }
+  }
+  g.position.set(x, 0, z);
+  scene.add(g);
+  circles.push({ x, z, r: 1.35 });
+  bushes.push({ x, z });
+}
+[[-6,-2],[5,4],[-3,15],[9,-5],[-11,2],[3,-17],[12,16],[-8,19],[20,-2],[-22,-3],[6,-9],[-15,-20]]
+  .forEach(p => makeBush(p[0], p[1]));
+
+// ---------- Trees ----------
+const trunkMat = new THREE.MeshStandardMaterial({ color: 0x6e4728, roughness: 1 });
+function makeTree(x, z, pine) {
+  const trunk = shadowify(new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.45, 2.4, 8), trunkMat));
+  trunk.position.set(x, 1.2, z);
+  scene.add(trunk);
+  if (pine) {
+    const m = new THREE.MeshStandardMaterial({ color: 0x2b5e34, roughness: 1 });
+    const c1 = shadowify(new THREE.Mesh(new THREE.ConeGeometry(2.1, 3, 9), m));
+    c1.position.set(x, 3.4, z);
+    const c2 = shadowify(new THREE.Mesh(new THREE.ConeGeometry(1.5, 2.4, 9), m));
+    c2.position.set(x, 5.2, z);
+    scene.add(c1, c2);
+  } else {
+    const m = new THREE.MeshStandardMaterial({ color: 0x40793a, roughness: 1 });
+    for (let i = 0; i < 3; i++) {
+      const s = shadowify(new THREE.Mesh(new THREE.SphereGeometry(1.5 - i * 0.25, 9, 7), m));
+      s.position.set(x + (Math.random() - 0.5), 3.4 + i * 0.9, z + (Math.random() - 0.5));
+      scene.add(s);
+    }
+  }
+  circles.push({ x, z, r: 0.8 });
+}
+[[-26,14,1],[25,20,0],[-27,-14,0],[27,-20,1],[6,-28,1],[-5,28,0],[22,-28,0],[-24,26,1],[26,0,0],[-28,0,1]]
+  .forEach(p => makeTree(p[0], p[1], p[2]));
+
+// ---------- Lamp posts that actually glow ----------
+function makeLamp(x, z) {
+  const pole = shadowify(new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.12, 3, 8),
+    new THREE.MeshStandardMaterial({ color: 0x23272e, roughness: 0.8 })));
+  pole.position.set(x, 1.5, z);
+  const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.28, 10, 8),
+    new THREE.MeshStandardMaterial({ color: 0xffe9a8, emissive: 0xffd063, emissiveIntensity: 2 }));
+  bulb.position.set(x, 3.1, z);
+  const light = new THREE.PointLight(0xffc964, 1.1, 14, 2);
+  light.position.set(x, 3.1, z);
+  scene.add(pole, bulb, light);
+  circles.push({ x, z, r: 0.35 });
+}
+[[2.4, 20], [-2.4, 12], [2.4, 2], [-10, -6], [10, -6]].forEach(p => makeLamp(p[0], p[1]));
+
+// ---------- Fireflies ----------
+const fireflies = [];
+const fireflyMat = new THREE.MeshBasicMaterial({ color: 0xd8ff7a, fog: false });
+for (let i = 0; i < 18; i++) {
+  const f = new THREE.Mesh(new THREE.SphereGeometry(0.06, 5, 4), fireflyMat.clone());
+  f.material.transparent = true;
+  const cx = Math.random() * 60 - 30, cz = Math.random() * 60 - 30;
+  f.position.set(cx, 1 + Math.random() * 1.5, cz);
+  scene.add(f);
+  fireflies.push({ m: f, cx, cz, ph: Math.random() * 6.28, sp: 0.4 + Math.random() * 0.6 });
+}
+
+// ---------- Hiders ----------
+const HIDERS = [
+  { name: 'Pip',  color: 0xe4538a },
+  { name: 'Momo', color: 0x5a67d8 },
+  { name: 'Zuzu', color: 0x1d9e75 }
+];
+const hiderGroups = [];
+function makeHider(h) {
+  const g = new THREE.Group();
+  const bodyMat = new THREE.MeshStandardMaterial({ color: h.color, roughness: 0.8 });
+  const skin = new THREE.MeshStandardMaterial({ color: 0xf7d7b0, roughness: 0.8 });
+  const dark = new THREE.MeshStandardMaterial({ color: 0x1c1c1c, roughness: 0.6 });
+  const body = shadowify(new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.42, 0.85, 12), bodyMat));
+  body.position.y = 0.43;
+  const head = shadowify(new THREE.Mesh(new THREE.SphereGeometry(0.35, 14, 12), skin));
+  head.position.y = 1.1;
+  const cap = new THREE.Mesh(new THREE.SphereGeometry(0.37, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), bodyMat);
+  cap.position.y = 1.14;
+  const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.055, 6, 5), dark);
+  eyeL.position.set(-0.12, 1.13, 0.3);
+  const eyeR = eyeL.clone(); eyeR.position.x = 0.12;
+  const armL = shadowify(new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.55, 8), bodyMat));
+  armL.position.set(-0.44, 0.6, 0); armL.rotation.z = 0.7;
+  const armR = armL.clone(); armR.position.x = 0.44; armR.rotation.z = -0.7;
+  g.add(body, head, cap, eyeL, eyeR, armL, armR);
+  scene.add(g);
+  return g;
+}
+HIDERS.forEach(h => hiderGroups.push(makeHider(h)));
+
+function pickSpots() {
+  const spots = [];
+  buildings.forEach(b => spots.push({ x: b.x, z: b.z - b.d / 2 + 1.4 }));
+  bushes.forEach(b => {
+    const dx = b.x, dz = b.z - 26, len = Math.hypot(dx, dz);
+    spots.push({ x: b.x + (dx / len) * 1.9, z: b.z + (dz / len) * 1.9 });
+  });
+  for (let i = spots.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [spots[i], spots[j]] = [spots[j], spots[i]];
+  }
+  return spots.slice(0, 3);
+}
+
+// ---------- Player + controls ----------
+const player = { x: 0, z: 26, yaw: Math.PI, pitch: 0, speed: 7 };
+const keys = {};
+addEventListener('keydown', e => keys[e.key.toLowerCase()] = true);
+addEventListener('keyup',   e => keys[e.key.toLowerCase()] = false);
+
+let lookId = null, lookLast = null, moveId = null, moveOrigin = null, moveVec = { x: 0, y: 0 };
+let mouseDown = false, mouseLast = null;
+
+canvas.addEventListener('mousedown', e => { mouseDown = true; mouseLast = [e.clientX, e.clientY]; });
+addEventListener('mouseup', () => mouseDown = false);
+addEventListener('mousemove', e => {
+  if (!mouseDown) return;
+  player.yaw   -= (e.clientX - mouseLast[0]) * 0.0045;
+  player.pitch -= (e.clientY - mouseLast[1]) * 0.0035;
+  player.pitch = Math.max(-0.9, Math.min(0.9, player.pitch));
+  mouseLast = [e.clientX, e.clientY];
+});
+
+canvas.addEventListener('touchstart', e => {
+  for (const t of e.changedTouches) {
+    if (t.clientX < innerWidth / 2 && moveId === null) {
+      moveId = t.identifier; moveOrigin = [t.clientX, t.clientY]; moveVec = { x: 0, y: 0 };
+    } else if (lookId === null) {
+      lookId = t.identifier; lookLast = [t.clientX, t.clientY];
+    }
+  }
+  e.preventDefault();
+}, { passive: false });
+
+canvas.addEventListener('touchmove', e => {
+  for (const t of e.changedTouches) {
+    if (t.identifier === moveId) {
+      moveVec.x = Math.max(-1, Math.min(1, (t.clientX - moveOrigin[0]) / 55));
+      moveVec.y = Math.max(-1, Math.min(1, (t.clientY - moveOrigin[1]) / 55));
+    } else if (t.identifier === lookId) {
+      player.yaw   -= (t.clientX - lookLast[0]) * 0.006;
+      player.pitch -= (t.clientY - lookLast[1]) * 0.004;
+      player.pitch = Math.max(-0.9, Math.min(0.9, player.pitch));
+      lookLast = [t.clientX, t.clientY];
+    }
+  }
+  e.preventDefault();
+}, { passive: false });
+
+addEventListener('touchend', e => {
+  for (const t of e.changedTouches) {
+    if (t.identifier === moveId) { moveId = null; moveVec = { x: 0, y: 0 }; }
+    if (t.identifier === lookId) lookId = null;
+  }
+});
+
+function collides(x, z) {
+  const r = 0.55;
+  if (Math.abs(x) > WORLD || Math.abs(z) > WORLD) return true;
+  for (const b of wallBoxes) {
+    const cx = Math.max(b.x1, Math.min(x, b.x2));
+    const cz = Math.max(b.z1, Math.min(z, b.z2));
+    if ((x - cx) ** 2 + (z - cz) ** 2 < r * r) return true;
+  }
+  for (const c of circles) {
+    if ((x - c.x) ** 2 + (z - c.z) ** 2 < (c.r + r) ** 2) return true;
+  }
+  return false;
+}
+
+// ---------- Game state ----------
+const msgEl = document.getElementById('message');
+let msgTimer = null;
+function say(text) {
+  msgEl.textContent = text;
+  msgEl.style.opacity = 1;
+  clearTimeout(msgTimer);
+  msgTimer = setTimeout(() => msgEl.style.opacity = 0, 2600);
+}
+
+let playing = false, timeLeft = 120, hiders = [];
+
+function startGame() {
+  player.x = 0; player.z = 26; player.yaw = Math.PI; player.pitch = 0;
+  timeLeft = 120;
+  const spots = pickSpots();
+  hiders = HIDERS.map((h, i) => ({ ...h, found: false, x: spots[i].x, z: spots[i].z, foundAt: 0 }));
+  hiders.forEach((h, i) => { hiderGroups[i].position.set(h.x, 0, h.z); hiderGroups[i].rotation.y = Math.random() * 6; });
+  for (let i = 0; i < 3; i++) document.getElementById('d' + i).classList.remove('on');
+  document.getElementById('startOverlay').classList.add('hidden');
+  document.getElementById('endOverlay').classList.add('hidden');
+  playing = true;
+  say('Ready or not, here you come!');
+}
+
+function endGame(won) {
+  playing = false;
+  document.getElementById('endEmoji').textContent = won ? '🎉' : '⏰';
+  document.getElementById('endTitle').textContent = won ? 'You found everyone!' : "Time's up!";
+  document.getElementById('endText').textContent = won
+    ? 'Pip, Momo and Zuzu all got caught in the dark. You are the hide and seek champion!'
+    : 'The hiders win this time. Want another go? They will pick brand new hiding spots.';
+  document.getElementById('endOverlay').classList.remove('hidden');
+}
+
+document.getElementById('startBtn').onclick = startGame;
+document.getElementById('againBtn').onclick = startGame;
+
+const meterFill = document.getElementById('meterFill');
+const meterLabel = document.getElementById('meterLabel');
+const timerEl = document.getElementById('timer');
+
+// ---------- Main loop ----------
+const clock = new THREE.Clock();
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 0.05);
+  const t = clock.elapsedTime;
+
+  clouds.forEach(c => {
+    c.g.position.x += c.speed * dt;
+    if (c.g.position.x > 90) c.g.position.x = -90;
+  });
+
+  fireflies.forEach(f => {
+    f.m.position.x = f.cx + Math.sin(t * f.sp + f.ph) * 2.2;
+    f.m.position.z = f.cz + Math.cos(t * f.sp * 0.8 + f.ph) * 2.2;
+    f.m.position.y = 1.2 + Math.sin(t * 1.7 + f.ph) * 0.5;
+    f.m.material.opacity = 0.35 + Math.abs(Math.sin(t * 2.2 + f.ph)) * 0.65;
+  });
+
+  if (playing) {
+    let fwd = 0, side = 0;
+    if (keys['w'] || keys['arrowup'])    fwd += 1;
+    if (keys['s'] || keys['arrowdown'])  fwd -= 1;
+    if (keys['a'] || keys['arrowleft'])  side -= 1;
+    if (keys['d'] || keys['arrowright']) side += 1;
+    fwd  += -moveVec.y;
+    side +=  moveVec.x;
+    const len = Math.hypot(fwd, side);
+    if (len > 0.05) {
+      fwd /= Math.max(1, len); side /= Math.max(1, len);
+      const s = Math.sin(player.yaw), c = Math.cos(player.yaw);
+      const dx = (-s * fwd + c * side) * player.speed * dt;
+      const dz = (-c * fwd - s * side) * player.speed * dt;
+      if (!collides(player.x + dx, player.z)) player.x += dx;
+      if (!collides(player.x, player.z + dz)) player.z += dz;
+    }
+
+    timeLeft -= dt;
+    if (timeLeft <= 0) { timeLeft = 0; endGame(false); }
+    const m = Math.floor(timeLeft / 60), sec = Math.floor(timeLeft % 60);
+    timerEl.textContent = m + ':' + String(sec).padStart(2, '0');
+
+    let nearest = 999;
+    hiders.forEach(h => {
+      if (h.found) return;
+      const d = Math.hypot(player.x - h.x, player.z - h.z);
+      nearest = Math.min(nearest, d);
+      if (d < 2.4) {
+        h.found = true; h.foundAt = t;
+        const foundCount = hiders.filter(x => x.found).length;
+        document.getElementById('d' + (foundCount - 1)).classList.add('on');
+        say('You found ' + h.name + '! ' + (3 - foundCount) + ' to go');
+        if (foundCount === 3) setTimeout(() => endGame(true), 1200);
+      }
+    });
+
+    const pct = Math.max(0, Math.min(1, 1 - (nearest - 2) / 26));
+    meterFill.style.width = (pct * 100) + '%';
+    meterFill.style.background = pct > 0.8 ? '#e24b4a' : pct > 0.55 ? '#ef9f27' : pct > 0.3 ? '#f2c14e' : '#4f9dde';
+    meterLabel.textContent = pct > 0.8 ? 'Boiling hot — giggling is right here!'
+                          : pct > 0.55 ? 'Warm… you hear giggling'
+                          : pct > 0.3  ? 'A little warm'
+                          : 'Cold';
+  }
+
+  hiders.forEach((h, i) => {
+    if (h.found) {
+      hiderGroups[i].position.y = Math.abs(Math.sin((t - h.foundAt) * 6)) * 0.5;
+      hiderGroups[i].rotation.y += dt * 4;
+    }
+  });
+
+  camera.position.set(player.x, 1.6, player.z);
+  camera.rotation.order = 'YXZ';
+  camera.rotation.y = player.yaw;
+  camera.rotation.x = player.pitch;
+
+  // Flashlight follows the camera
+  flashlight.position.copy(camera.position);
+  const dir = new THREE.Vector3(
+    -Math.sin(player.yaw) * Math.cos(player.pitch),
+    Math.sin(player.pitch),
+    -Math.cos(player.yaw) * Math.cos(player.pitch)
+  );
+  flashlight.target.position.copy(camera.position).add(dir.multiplyScalar(10));
+
+  renderer.render(scene, camera);
+}
+animate();
+</script>
+</body>
+</html>
