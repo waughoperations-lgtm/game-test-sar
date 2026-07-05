@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Hide and Seek Town — Night</title>
+<title>Hide from the Monster — Night</title>
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;900&display=swap" rel="stylesheet">
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -13,9 +13,6 @@
   .card { background: rgba(16,24,42,0.82); border-radius: 14px; padding: 8px 16px;
           box-shadow: 0 3px 12px rgba(0,0,0,0.5); font-weight: 900; color: #ffe9b0; }
   #timer { top: 12px; left: 12px; font-size: 22px; }
-  #foundBox { top: 12px; right: 12px; font-size: 18px; display: flex; gap: 8px; align-items: center; }
-  .dot { width: 16px; height: 16px; border-radius: 50%; border: 3px solid #ffe9b0; background: transparent; }
-  .dot.on { background: #ffe9b0; }
   #message { top: 64px; left: 50%; transform: translateX(-50%); font-size: 17px;
              opacity: 0; transition: opacity .3s; max-width: 90vw; text-align: center; }
   #meterWrap { bottom: 18px; left: 50%; transform: translateX(-50%); width: min(300px, 70vw); text-align: center; }
@@ -35,29 +32,33 @@
   .panel button:active { transform: translateY(3px); box-shadow: 0 1px 0 #b28a2e; }
   .hidden { display: none !important; }
   #endOverlay .big { font-size: 46px; margin-bottom: 4px; }
+  #torchBtn { top: 12px; right: 12px; font-size: 16px; font-family: inherit; border: none;
+              cursor: pointer; pointer-events: auto; }
+  #torchBtn.off { color: #8b96b4; }
+  #vignette { position: fixed; inset: 0; z-index: 4; pointer-events: none; opacity: 0;
+              box-shadow: inset 0 0 170px 55px rgba(150,0,0,0.85); transition: opacity .2s; }
 </style>
 </head>
 <body>
 <canvas id="game"></canvas>
 
 <div class="hud card" id="timer">2:00</div>
-<div class="hud card" id="foundBox">Found
-  <span class="dot" id="d0"></span><span class="dot" id="d1"></span><span class="dot" id="d2"></span>
-</div>
+<button class="hud card" id="torchBtn">🔦 Flashlight: ON</button>
 <div class="hud card" id="message"></div>
 <div class="hud" id="meterWrap">
-  <div class="card" id="meterLabel">Giggle meter</div>
+  <div class="card" id="meterLabel">Danger</div>
   <div id="meterBar"><div id="meterFill"></div></div>
 </div>
+<div id="vignette"></div>
 
 <div class="overlay" id="startOverlay">
   <div class="panel">
-    <h1>Hide and Seek at Night</h1>
-    <p>It's dark out, and Pip, Momo and Zuzu are hiding in the town &mdash; inside the glowing houses or behind the bushes. You have a flashlight and 2 minutes. Find all 3!</p>
-    <p><b>Computer:</b> walk with W A S D or the arrow keys, click-and-drag to look around.<br><br>
-       <b>Phone or tablet:</b> slide your <b>left thumb</b> to walk, slide your <b>right thumb</b> to look around.</p>
-    <p>Your flashlight always points where you look. The giggle meter fills up when someone is close &mdash; walk right up to them to catch them!</p>
-    <button id="startBtn">Start seeking</button>
+    <h1>Hide from the Monster</h1>
+    <p>It's dark out, and a monster is prowling the town looking for <b>you</b>. Stay away from it and survive for <b>2 minutes</b> to win. Watch for its glowing eyes in the dark!</p>
+    <p><b>Computer:</b> walk with W A S D or the arrow keys, click-and-drag to look around. Press <b>F</b> to turn your flashlight on/off.<br><br>
+       <b>Phone or tablet:</b> slide your <b>left thumb</b> to walk, slide your <b>right thumb</b> to look around. Tap the 🔦 button to turn your flashlight on/off.</p>
+    <p>Your flashlight helps you see &mdash; but it also gives you away! Turn it off and duck behind houses and bushes to lose the monster. The danger meter fills up as it closes in.</p>
+    <button id="startBtn">Start hiding</button>
   </div>
 </div>
 
@@ -377,48 +378,60 @@ for (let i = 0; i < 18; i++) {
   fireflies.push({ m: f, cx, cz, ph: Math.random() * 6.28, sp: 0.4 + Math.random() * 0.6 });
 }
 
-// ---------- Hiders ----------
-const HIDERS = [
-  { name: 'Pip',  color: 0xe4538a },
-  { name: 'Momo', color: 0x5a67d8 },
-  { name: 'Zuzu', color: 0x1d9e75 }
-];
-const hiderGroups = [];
-function makeHider(h) {
-  const g = new THREE.Group();
-  const bodyMat = new THREE.MeshStandardMaterial({ color: h.color, roughness: 0.8 });
-  const skin = new THREE.MeshStandardMaterial({ color: 0xf7d7b0, roughness: 0.8 });
-  const dark = new THREE.MeshStandardMaterial({ color: 0x1c1c1c, roughness: 0.6 });
-  const body = shadowify(new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.42, 0.85, 12), bodyMat));
-  body.position.y = 0.43;
-  const head = shadowify(new THREE.Mesh(new THREE.SphereGeometry(0.35, 14, 12), skin));
-  head.position.y = 1.1;
-  const cap = new THREE.Mesh(new THREE.SphereGeometry(0.37, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), bodyMat);
-  cap.position.y = 1.14;
-  const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.055, 6, 5), dark);
-  eyeL.position.set(-0.12, 1.13, 0.3);
-  const eyeR = eyeL.clone(); eyeR.position.x = 0.12;
-  const armL = shadowify(new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.55, 8), bodyMat));
-  armL.position.set(-0.44, 0.6, 0); armL.rotation.z = 0.7;
-  const armR = armL.clone(); armR.position.x = 0.44; armR.rotation.z = -0.7;
-  g.add(body, head, cap, eyeL, eyeR, armL, armR);
-  scene.add(g);
-  return g;
+// ---------- The Monster ----------
+// A dark floating creature with big glowing eyes that hunts the player.
+const monsterGroup = new THREE.Group();
+const monEyeMat = new THREE.MeshBasicMaterial({ color: 0xfff2a0, fog: false });
+function makeMonster() {
+  const bodyMat = new THREE.MeshStandardMaterial({ color: 0x241633, roughness: 0.85, emissive: 0x130a1f, emissiveIntensity: 0.5 });
+  const dark = new THREE.MeshStandardMaterial({ color: 0x0a0510, roughness: 0.6 });
+  // Big lumpy body
+  const body = shadowify(new THREE.Mesh(new THREE.SphereGeometry(1.05, 16, 14), bodyMat));
+  body.position.y = 1.35; body.scale.set(1, 1.15, 1);
+  // A couple of horns
+  const hornMat = new THREE.MeshStandardMaterial({ color: 0x3a2350, roughness: 0.7 });
+  const hornL = shadowify(new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.75, 8), hornMat));
+  hornL.position.set(-0.4, 2.5, 0); hornL.rotation.z = 0.25;
+  const hornR = hornL.clone(); hornR.position.x = 0.4; hornR.rotation.z = -0.25;
+  // Glowing eyes (with a light so they light up the scene)
+  const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.22, 12, 10), monEyeMat);
+  eyeL.position.set(-0.34, 1.7, 0.85);
+  const eyeR = eyeL.clone(); eyeR.position.x = 0.34;
+  const pupL = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 7), dark);
+  pupL.position.set(-0.34, 1.7, 1.02);
+  const pupR = pupL.clone(); pupR.position.x = 0.34;
+  const eyeGlow = new THREE.PointLight(0xffe27a, 0.9, 9, 2);
+  eyeGlow.position.set(0, 1.7, 0.9);
+  // Wispy arms
+  const armL = shadowify(new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.05, 1.1, 8), bodyMat));
+  armL.position.set(-1, 1.3, 0.2); armL.rotation.z = 0.5;
+  const armR = armL.clone(); armR.position.x = 1; armR.rotation.z = -0.5;
+  monsterGroup.add(body, hornL, hornR, eyeL, eyeR, pupL, pupR, eyeGlow, armL, armR);
+  monsterGroup.visible = false;
+  scene.add(monsterGroup);
 }
-HIDERS.forEach(h => hiderGroups.push(makeHider(h)));
+makeMonster();
 
-function pickSpots() {
-  const spots = [];
-  buildings.forEach(b => spots.push({ x: b.x, z: b.z - b.d / 2 + 1.4 }));
-  bushes.forEach(b => {
-    const dx = b.x, dz = b.z - 26, len = Math.hypot(dx, dz);
-    spots.push({ x: b.x + (dx / len) * 1.9, z: b.z + (dz / len) * 1.9 });
-  });
-  for (let i = spots.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [spots[i], spots[j]] = [spots[j], spots[i]];
+// Line-of-sight: can point A see point B, or do buildings/bushes block the view?
+function hasLineOfSight(ax, az, bx, bz) {
+  const dx = bx - ax, dz = bz - az, dist = Math.hypot(dx, dz);
+  const steps = Math.max(4, Math.ceil(dist / 1.2));
+  for (let i = 1; i < steps; i++) {
+    const px = ax + dx * (i / steps), pz = az + dz * (i / steps);
+    for (const b of wallBoxes) {
+      if (px > b.x1 && px < b.x2 && pz > b.z1 && pz < b.z2) return false;
+    }
+    for (const c of circles) {
+      if (c.r >= 1 && (px - c.x) ** 2 + (pz - c.z) ** 2 < c.r * c.r) return false;
+    }
   }
-  return spots.slice(0, 3);
+  return true;
+}
+
+// Somewhere on the far side of town from where the player starts (z = 26).
+function monsterSpawn() {
+  const opts = [{ x: 0, z: -30 }, { x: -24, z: -22 }, { x: 24, z: -22 }, { x: 0, z: -18 }];
+  return opts[Math.floor(Math.random() * opts.length)];
 }
 
 // ---------- Player + controls ----------
@@ -473,8 +486,8 @@ addEventListener('touchend', e => {
   }
 });
 
-function collides(x, z) {
-  const r = 0.55;
+function collides(x, z, r) {
+  r = r || 0.55;
   if (Math.abs(x) > WORLD || Math.abs(z) > WORLD) return true;
   for (const b of wallBoxes) {
     const cx = Math.max(b.x1, Math.min(x, b.x2));
@@ -497,33 +510,50 @@ function say(text) {
   msgTimer = setTimeout(() => msgEl.style.opacity = 0, 2600);
 }
 
-let playing = false, timeLeft = 120, hiders = [];
+let playing = false, timeLeft = 120;
+// The monster's brain: where it is, where it's heading, and whether it's hunting you.
+const monster = { x: 0, z: -30, targetX: 0, targetZ: -30, state: 'wander', speed: 3, lostTimer: 0, growlTimer: 0 };
+let torchOn = true;
+
+function setTorch(on) {
+  torchOn = on;
+  flashlight.visible = on;
+  const btn = document.getElementById('torchBtn');
+  btn.textContent = '🔦 Flashlight: ' + (on ? 'ON' : 'OFF');
+  btn.classList.toggle('off', !on);
+}
 
 function startGame() {
-  player.x = 0; player.z = 26; player.yaw = Math.PI; player.pitch = 0;
+  player.x = 0; player.z = 26; player.yaw = 0; player.pitch = 0;
   timeLeft = 120;
-  const spots = pickSpots();
-  hiders = HIDERS.map((h, i) => ({ ...h, found: false, x: spots[i].x, z: spots[i].z, foundAt: 0 }));
-  hiders.forEach((h, i) => { hiderGroups[i].position.set(h.x, 0, h.z); hiderGroups[i].rotation.y = Math.random() * 6; });
-  for (let i = 0; i < 3; i++) document.getElementById('d' + i).classList.remove('on');
+  const sp = monsterSpawn();
+  monster.x = sp.x; monster.z = sp.z; monster.targetX = sp.x; monster.targetZ = sp.z;
+  monster.state = 'wander'; monster.lostTimer = 0;
+  monsterGroup.position.set(sp.x, 0, sp.z);
+  monsterGroup.visible = true;
+  setTorch(true);
+  document.getElementById('vignette').style.opacity = 0;
   document.getElementById('startOverlay').classList.add('hidden');
   document.getElementById('endOverlay').classList.add('hidden');
   playing = true;
-  say('Ready or not, here you come!');
+  say('The monster is awake… hide!');
 }
 
 function endGame(won) {
   playing = false;
-  document.getElementById('endEmoji').textContent = won ? '🎉' : '⏰';
-  document.getElementById('endTitle').textContent = won ? 'You found everyone!' : "Time's up!";
+  document.getElementById('vignette').style.opacity = 0;
+  document.getElementById('endEmoji').textContent = won ? '🌅' : '👹';
+  document.getElementById('endTitle').textContent = won ? 'You survived!' : 'The monster got you!';
   document.getElementById('endText').textContent = won
-    ? 'Pip, Momo and Zuzu all got caught in the dark. You are the hide and seek champion!'
-    : 'The hiders win this time. Want another go? They will pick brand new hiding spots.';
+    ? 'You made it to sunrise without getting caught. You are the hide-and-seek champion — the monster goes back to sleep!'
+    : 'The monster found your hiding spot. Want another go? It will start from a new corner of town.';
   document.getElementById('endOverlay').classList.remove('hidden');
 }
 
 document.getElementById('startBtn').onclick = startGame;
 document.getElementById('againBtn').onclick = startGame;
+document.getElementById('torchBtn').onclick = () => { if (playing) setTorch(!torchOn); };
+addEventListener('keydown', e => { if (e.key.toLowerCase() === 'f' && playing) setTorch(!torchOn); });
 
 const meterFill = document.getElementById('meterFill');
 const meterLabel = document.getElementById('meterLabel');
@@ -571,35 +601,74 @@ function animate() {
     const m = Math.floor(timeLeft / 60), sec = Math.floor(timeLeft % 60);
     timerEl.textContent = m + ':' + String(sec).padStart(2, '0');
 
-    let nearest = 999;
-    hiders.forEach(h => {
-      if (h.found) return;
-      const d = Math.hypot(player.x - h.x, player.z - h.z);
-      nearest = Math.min(nearest, d);
-      if (d < 2.4) {
-        h.found = true; h.foundAt = t;
-        const foundCount = hiders.filter(x => x.found).length;
-        document.getElementById('d' + (foundCount - 1)).classList.add('on');
-        say('You found ' + h.name + '! ' + (3 - foundCount) + ' to go');
-        if (foundCount === 3) setTimeout(() => endGame(true), 1200);
-      }
-    });
+    // --- Monster brain ---
+    const dToPlayer = Math.hypot(player.x - monster.x, player.z - monster.z);
+    const los = hasLineOfSight(monster.x, monster.z, player.x, player.z);
+    const sightRange = torchOn ? 23 : 9;               // your flashlight gives you away
+    const senses = (dToPlayer < sightRange && los) || dToPlayer < 4.5;  // it can hear you up close
 
-    const pct = Math.max(0, Math.min(1, 1 - (nearest - 2) / 26));
+    if (senses) {
+      if (monster.state !== 'chase') say('It spotted you — RUN!');
+      monster.state = 'chase';
+      monster.targetX = player.x; monster.targetZ = player.z; monster.lostTimer = 0;
+    } else if (monster.state === 'chase') {
+      monster.lostTimer += dt;
+      const atLast = Math.hypot(monster.targetX - monster.x, monster.targetZ - monster.z) < 1.5;
+      if (monster.lostTimer > 4 || atLast) {
+        monster.state = 'wander';
+        monster.targetX = (Math.random() * 2 - 1) * 30;
+        monster.targetZ = (Math.random() * 2 - 1) * 30;
+        say('You lost it… for now.');
+      }
+    }
+    if (monster.state === 'wander' &&
+        Math.hypot(monster.targetX - monster.x, monster.targetZ - monster.z) < 2) {
+      monster.targetX = (Math.random() * 2 - 1) * 30;
+      monster.targetZ = (Math.random() * 2 - 1) * 30;
+    }
+
+    // Move the monster toward its target, sliding along walls
+    const spd = (monster.state === 'chase' ? 5.2 : 3) * dt;
+    let mdx = monster.targetX - monster.x, mdz = monster.targetZ - monster.z;
+    const mlen = Math.hypot(mdx, mdz) || 1;
+    mdx = mdx / mlen * spd; mdz = mdz / mlen * spd;
+    const beforeX = monster.x, beforeZ = monster.z;
+    if (!collides(monster.x + mdx, monster.z, 0.9)) monster.x += mdx;
+    if (!collides(monster.x, monster.z + mdz, 0.9)) monster.z += mdz;
+    // If it wandered into a corner and got stuck, pick a fresh spot
+    if (monster.state === 'wander' &&
+        Math.hypot(monster.x - beforeX, monster.z - beforeZ) < spd * 0.3) {
+      monster.stuck = (monster.stuck || 0) + dt;
+      if (monster.stuck > 0.4) {
+        monster.targetX = (Math.random() * 2 - 1) * 30;
+        monster.targetZ = (Math.random() * 2 - 1) * 30;
+        monster.stuck = 0;
+      }
+    } else monster.stuck = 0;
+
+    // Caught!
+    if (dToPlayer < 1.7) { endGame(false); }
+
+    // --- Danger meter + red screen glow ---
+    let pct = Math.max(0, Math.min(1, 1 - (dToPlayer - 1.5) / 18));
+    if (monster.state === 'chase') pct = Math.min(1, pct + 0.18);
     meterFill.style.width = (pct * 100) + '%';
     meterFill.style.background = pct > 0.8 ? '#e24b4a' : pct > 0.55 ? '#ef9f27' : pct > 0.3 ? '#f2c14e' : '#4f9dde';
-    meterLabel.textContent = pct > 0.8 ? 'Boiling hot — giggling is right here!'
-                          : pct > 0.55 ? 'Warm… you hear giggling'
-                          : pct > 0.3  ? 'A little warm'
-                          : 'Cold';
-  }
+    meterLabel.textContent = monster.state === 'chase' ? 'IT SEES YOU — RUN!'
+                          : pct > 0.7 ? 'It is very close!'
+                          : pct > 0.4 ? 'It is nearby…'
+                          : pct > 0.2 ? 'You hear it moving'
+                          : 'You are hidden';
+    document.getElementById('vignette').style.opacity =
+      monster.state === 'chase' ? Math.min(0.9, 0.4 + pct * 0.5) : Math.max(0, (pct - 0.6) * 1.4);
 
-  hiders.forEach((h, i) => {
-    if (h.found) {
-      hiderGroups[i].position.y = Math.abs(Math.sin((t - h.foundAt) * 6)) * 0.5;
-      hiderGroups[i].rotation.y += dt * 4;
-    }
-  });
+    // Point the monster where it is going, glare red while hunting
+    const faceX = (monster.state === 'chase' ? player.x : monster.targetX) - monster.x;
+    const faceZ = (monster.state === 'chase' ? player.z : monster.targetZ) - monster.z;
+    monsterGroup.rotation.y = Math.atan2(faceX, faceZ);
+    monsterGroup.position.set(monster.x, Math.sin(t * 2.2) * 0.12, monster.z);
+    monEyeMat.color.setHex(monster.state === 'chase' ? 0xff4a2e : 0xfff2a0);
+  }
 
   camera.position.set(player.x, 1.6, player.z);
   camera.rotation.order = 'YXZ';

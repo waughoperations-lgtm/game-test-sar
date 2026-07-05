@@ -1,10 +1,13 @@
-# Hide and Seek Town (night version)
+# Hide from the Monster (night version)
 
 ## What this project is
-A 3D hide-and-seek game that runs in a web browser. The player walks around a small
-town at night with a flashlight, looking for 3 hidden characters (Pip, Momo, Zuzu)
-who hide inside houses or behind bushes. There is a 2-minute timer and a "giggle
-meter" that fills up as the player gets close to a hider.
+A 3D hide-from-the-monster game that runs in a web browser. The player walks around
+a small town at night with a flashlight while a monster prowls and hunts them. The
+goal is to survive for 2 minutes without being caught. The monster wanders until it
+spots the player, then chases; breaking its line of sight (behind houses or bushes)
+makes it lose you. The flashlight helps you see but also gives you away, so you can
+turn it off (F key, or the on-screen button) to sneak in the dark. A "danger meter"
+fills up and the screen glows red as the monster closes in.
 
 ## Important context about the owner
 The owner is NOT a programmer. They know how to use a computer but not how to code.
@@ -29,10 +32,13 @@ When working with them:
    - Ground and dirt paths
    - Houses (walls with door openings, pitched roofs, glowing windows, door lights)
    - Bushes, trees, glowing lamp posts, fireflies
-   - The 3 hider characters and `pickSpots()` which chooses random hiding places
-   - Player movement + controls (WASD/arrows + mouse drag; touch joystick on mobile)
+   - The monster character, `hasLineOfSight()` (can it see you past buildings/bushes),
+     and `monsterSpawn()` which places it on the far side of town
+   - Player movement + controls (WASD/arrows + mouse drag; touch joystick on mobile;
+     F key or 🔦 button toggles the flashlight)
    - Collision detection (`wallBoxes` rectangles and `circles`)
-   - Game state: `startGame()`, `endGame()`, timer, giggle meter
+   - Game state: `startGame()`, `endGame()`, timer, danger meter
+   - The monster's "brain" (wander vs. chase) lives inside the main `animate()` loop
    - Main `animate()` loop
 
 ## How to test
@@ -41,7 +47,9 @@ Open index.html in a browser (double-click it). No build step, no server needed.
 ## Ideas the owner has mentioned or may want next
 - Online multiplayer so real friends can hide/seek from their own devices
   (would require a server — that's a big step up from this single file)
-- Sounds: footsteps, giggles that get louder when close, catch fanfare
-- Hiders that sneak to new hiding spots while the player isn't looking
-- A mode where the player hides and a character seeks
-- Bigger town, more hiders, difficulty levels
+- Sounds: footsteps, a growl that gets louder when the monster is close, a scare sting
+  when caught
+- More than one monster, or a monster that gets faster over time
+- Difficulty levels (more time, slower monster = easier)
+- Hiding spots you can climb into (inside a house) where the monster can't follow
+- A bigger town to run and hide in
