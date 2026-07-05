@@ -17,9 +17,17 @@ When working with them:
 - After changes, tell them to open index.html in their browser to see the result
 
 ## Project structure
-- `index.html` — the ENTIRE game in one file (HTML + CSS + JavaScript).
+- `index.html` — the ENTIRE single-player game in one file (HTML + CSS + JavaScript).
   It loads the Three.js 3D library (version r128) from a CDN, so an internet
   connection is needed the first time it loads.
+- `multiplayer.html` — an online multiplayer version (separate file, single-player
+  is untouched). Friends join a room by code; one player is randomly the monster and
+  hunts the others; hiders survive 2 minutes to win. Networking is peer-to-peer over
+  WebRTC via PeerJS (loaded from a CDN) using its free public broker — no server of
+  our own. One player is the "host" and acts as the referee/relay, so the host must
+  keep their tab open. To test: open multiplayer.html in two browser tabs (both need
+  internet), Create a room in one and Join with the code in the other. For friends on
+  other devices, the file needs to be hosted at a web link (e.g. GitHub Pages).
 
 ## How the code is organized (all inside index.html)
 1. CSS styles for the on-screen displays (timer, found counter, giggle meter, menus)
