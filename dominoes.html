@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Domino Night — Online</title>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;900&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; overflow: hidden; font-family: 'Nunito', system-ui, sans-serif; background: #05060a; color: #eef2ff; }
+  #game { position: fixed; inset: 0; touch-action: none; }
+  .hud { position: fixed; z-index: 5; }
+  .card { background: rgba(12,16,28,0.82); border-radius: 14px; padding: 8px 14px;
+          box-shadow: 0 3px 12px rgba(0,0,0,0.5); font-weight: 900; }
+  #turnBox { top: 12px; left: 50%; transform: translateX(-50%); font-size: 18px; color: #ffe9b0; text-align: center; }
+  #boneBox { top: 12px; right: 12px; font-size: 15px; color: #cfe0ff; }
+  #micBox  { top: 12px; left: 12px; font-size: 15px; color: #9fb0d0; }
+  #message { top: 56px; left: 50%; transform: translateX(-50%); font-size: 16px; opacity: 0;
+             transition: opacity .3s; max-width: 90vw; text-align: center; }
+  /* Board (the played chain) */
+  #boardWrap { position: fixed; z-index: 5; top: 92px; left: 50%; transform: translateX(-50%);
+               width: min(92vw, 760px); overflow-x: auto; white-space: nowrap; padding: 8px;
+               background: rgba(8,12,22,0.55); border-radius: 12px; text-align: center; }
+  #board { display: inline-flex; align-items: center; gap: 0; min-height: 46px; }
+  #board .end { color: #ffd268; font-weight: 900; font-size: 13px; align-self: center; padding: 0 6px; }
+  /* Your hand */
+  #handWrap { position: fixed; z-index: 6; bottom: 12px; left: 50%; transform: translateX(-50%);
+              width: 96vw; text-align: center; }
+  #hand { display: inline-flex; flex-wrap: wrap; gap: 8px; justify-content: center;
+          background: rgba(8,12,22,0.6); padding: 10px; border-radius: 14px; max-width: 100%; }
+  #actions { margin-top: 8px; display: flex; gap: 10px; justify-content: center; }
+  /* Domino tiles */
+  .domino { display: inline-flex; background: #f4ecd8; border-radius: 6px; border: 1px solid #cdbf9c;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.5); vertical-align: middle; }
+  .domino.small { transform: scale(0.7); }
+  .domino .half { display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr);
+                  width: 36px; height: 36px; padding: 4px; }
+  .domino .divider { width: 2px; background: #cdbf9c; }
+  .domino .half span { display: block; }
+  .domino .half span.pip { width: 8px; height: 8px; background: #23262e; border-radius: 50%;
+                           align-self: center; justify-self: center; }
+  #hand .domino { cursor: default; }
+  #hand .domino.playable { cursor: pointer; outline: 3px solid #6fcf6f; outline-offset: 2px; }
+  #hand .domino.sel { outline: 3px solid #ffd268; }
+  .btn { font-family: inherit; font-weight: 900; font-size: 16px; color: #1a1408; background: #ffd268;
+         border: none; border-radius: 12px; padding: 11px 20px; cursor: pointer; box-shadow: 0 4px 0 #b28a2e; }
+  .btn:active { transform: translateY(3px); box-shadow: 0 1px 0 #b28a2e; }
+  .btn.blue { background: #5aa9ff; box-shadow: 0 4px 0 #2f6bb0; color: #08122a; }
+  .btn.blue:active { box-shadow: 0 1px 0 #2f6bb0; }
+  .btn.grey { background: #3a4157; box-shadow: 0 4px 0 #262b3a; color: #cfd6e8; }
+  .btn:disabled { opacity: 0.5; cursor: default; box-shadow: none; }
+  #talkBtn { position: fixed; z-index: 7; bottom: 150px; right: 16px; border-radius: 50%;
+             width: 74px; height: 74px; font-size: 13px; line-height: 1.1; background: #2a3350; color: #cfe0ff;
+             box-shadow: 0 4px 0 #161d30; border: none; cursor: pointer; pointer-events: auto; font-weight: 900; }
+  #talkBtn.talking { background: #4fd06a; color: #06210d; box-shadow: 0 4px 0 #2d8a41; }
+  .hidden { display: none !important; }
+  /* Overlays */
+  .overlay { position: fixed; inset: 0; z-index: 10; background: rgba(3,6,14,0.85);
+             display: flex; align-items: center; justify-content: center; padding: 20px; }
+  .panel { background: #10141f; border: 1px solid #2a2340; border-radius: 22px; padding: 26px 24px;
+           max-width: 440px; width: 100%; text-align: center; box-shadow: 0 12px 40px rgba(0,0,0,0.7); }
+  .panel h1 { font-size: 26px; font-weight: 900; margin-bottom: 10px; color: #ffd268; }
+  .panel p { font-size: 15px; font-weight: 700; line-height: 1.5; margin-bottom: 12px; color: #b9c0d8; }
+  .panel input { font-family: inherit; font-weight: 800; font-size: 17px; color: #eef2ff; background: #1b2233;
+                 border: 1px solid #33405f; border-radius: 12px; padding: 11px 14px; width: 100%; margin: 6px 0; text-align: center; }
+  .panel input::placeholder { color: #6b7699; }
+  .panel .btn { width: 100%; margin-top: 8px; }
+  .divider2 { display: flex; align-items: center; gap: 10px; color: #57607a; font-size: 13px; margin: 12px 0 6px; }
+  .divider2::before, .divider2::after { content: ''; flex: 1; height: 1px; background: #2a3350; }
+  #roomCode { font-size: 40px; font-weight: 900; letter-spacing: 6px; color: #ffe9b0; margin: 6px 0 2px; cursor: pointer; }
+  #playerList { list-style: none; text-align: left; margin: 8px 0 14px; }
+  #playerList li { display: flex; align-items: center; gap: 9px; padding: 7px 10px; background: #171d2c;
+                   border-radius: 10px; margin-bottom: 6px; font-weight: 800; font-size: 15px; }
+  .swatch { width: 15px; height: 15px; border-radius: 50%; }
+  .err { color: #ff8a7a; font-size: 13px; min-height: 18px; margin-top: 4px; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div class="hud card" id="micBox">🎤 hold SPACE to talk</div>
+<div class="hud card" id="turnBox">—</div>
+<div class="hud card" id="boneBox">Boneyard: 0</div>
+<div class="hud card" id="message"></div>
+
+<div id="boardWrap" class="hidden"><div id="board"></div></div>
+<div id="handWrap" class="hidden">
+  <div id="hand"></div>
+  <div id="actions">
+    <button class="btn blue" id="drawBtn">Draw a tile</button>
+    <button class="btn grey" id="passBtn">Pass</button>
+  </div>
+</div>
+<button id="talkBtn" class="hidden">HOLD<br>to talk</button>
+
+<div class="overlay" id="startOverlay">
+  <div class="panel">
+    <div id="menuView">
+      <h1>Domino Night</h1>
+      <p>Play classic dominoes with friends around a table &mdash; with voice chat. One player creates a room; the others join with the code.</p>
+      <input id="nameInput" maxlength="12" placeholder="Your name">
+      <button class="btn" id="createBtn">Create a table</button>
+      <div class="divider2">or join a friend</div>
+      <input id="codeInput" maxlength="4" placeholder="Room code" style="text-transform:uppercase; letter-spacing:4px;">
+      <button class="btn blue" id="joinBtn">Join table</button>
+      <div class="err" id="menuErr"></div>
+    </div>
+    <div id="lobbyView" class="hidden">
+      <h1>Table</h1>
+      <div id="roomCode">----</div>
+      <p style="margin:2px 0 10px;font-size:12px;color:#7a8299;">Tap the code to copy &mdash; share it with friends (2&ndash;4 players)</p>
+      <ul id="playerList"></ul>
+      <button class="btn" id="startBtn" disabled>Start game</button>
+      <p id="waitHint" class="hidden">Waiting for the host to start…</p>
+      <div class="err" id="lobbyErr"></div>
+    </div>
+  </div>
+</div>
+
+<div class="overlay hidden" id="endOverlay">
+  <div class="panel">
+    <h1 id="endTitle">Round over</h1>
+    <p id="endText"></p>
+    <button class="btn hidden" id="againBtn">Play again</button>
+    <p id="endWait" class="hidden">Waiting for the host to deal the next round…</p>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js"></script>
+<script>
+// ---------- Renderer, scene, camera ----------
+const canvas = document.getElementById('game');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.Fog(0x0b0f1a, 20, 70);
+const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 400);
+
+function resize() {
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', resize); resize();
+
+// ---------- Lighting ----------
+scene.add(new THREE.HemisphereLight(0x33456e, 0x111a12, 0.4));
+const moonLight = new THREE.DirectionalLight(0x9fb6e8, 0.3);
+moonLight.position.set(-35, 50, -25);
+moonLight.castShadow = true;
+moonLight.shadow.mapSize.set(2048, 2048);
+moonLight.shadow.camera.left = -30; moonLight.shadow.camera.right = 30;
+moonLight.shadow.camera.top = 30; moonLight.shadow.camera.bottom = -30;
+moonLight.shadow.camera.near = 5; moonLight.shadow.camera.far = 140;
+scene.add(moonLight);
+
+// ---------- Textures ----------
+function makeCanvas(fn) { const c = document.createElement('canvas'); c.width = c.height = 256; fn(c.getContext('2d')); return c; }
+const grassTex = new THREE.CanvasTexture(makeCanvas(x => {
+  x.fillStyle = '#5d8f47'; x.fillRect(0, 0, 256, 256);
+  for (let i = 0; i < 5000; i++) { const g = 90 + Math.random() * 80;
+    x.fillStyle = 'rgba(' + (35 + Math.random() * 45) + ',' + g + ',' + (35 + Math.random() * 35) + ',0.4)';
+    x.fillRect(Math.random() * 256, Math.random() * 256, 2, 3 + Math.random() * 3); }
+}));
+grassTex.wrapS = grassTex.wrapT = THREE.RepeatWrapping; grassTex.repeat.set(26, 26);
+const plasterTex = new THREE.CanvasTexture(makeCanvas(x => {
+  x.fillStyle = '#ffffff'; x.fillRect(0, 0, 256, 256);
+  for (let i = 0; i < 2200; i++) { const v = 220 + Math.random() * 35;
+    x.fillStyle = 'rgba(' + v + ',' + v + ',' + v + ',0.5)'; x.fillRect(Math.random() * 256, Math.random() * 256, 3, 3); }
+}));
+const woodTex = new THREE.CanvasTexture(makeCanvas(x => {
+  x.fillStyle = '#6b4423'; x.fillRect(0, 0, 256, 256);
+  for (let i = 0; i < 60; i++) { x.strokeStyle = 'rgba(' + (60 + Math.random()*40) + ',' + (35+Math.random()*25) + ',18,0.5)';
+    x.lineWidth = 1 + Math.random() * 2; x.beginPath(); x.moveTo(0, i * 4.5 + Math.random()*3); x.bezierCurveTo(80, i*4.5+Math.random()*6, 170, i*4.5-Math.random()*6, 256, i*4.5+Math.random()*3); x.stroke(); }
+}));
+
+// ---------- Sky + ground ----------
+const skyTex = new THREE.CanvasTexture(makeCanvas(x => {
+  const g = x.createLinearGradient(0, 0, 0, 256);
+  g.addColorStop(0, '#060b1c'); g.addColorStop(0.55, '#0d1730'); g.addColorStop(1, '#1c2c4e');
+  x.fillStyle = g; x.fillRect(0, 0, 256, 256);
+}));
+scene.add(new THREE.Mesh(new THREE.SphereGeometry(220, 20, 14), new THREE.MeshBasicMaterial({ map: skyTex, side: THREE.BackSide, fog: false })));
+const starGeo = new THREE.BufferGeometry(); const sp = [];
+for (let i = 0; i < 400; i++) { const a = Math.random() * 6.28, e = Math.random() * 1.4 + 0.06, r = 200;
+  sp.push(Math.cos(a) * Math.cos(e) * r, Math.sin(e) * r, Math.sin(a) * Math.cos(e) * r); }
+starGeo.setAttribute('position', new THREE.Float32BufferAttribute(sp, 3));
+scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xdfe8ff, size: 1.4, sizeAttenuation: false, fog: false })));
+const moon = new THREE.Mesh(new THREE.SphereGeometry(7, 16, 12), new THREE.MeshBasicMaterial({ color: 0xf3eeda, fog: false }));
+moon.position.set(-90, 110, -70); scene.add(moon);
+
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(140, 140),
+  new THREE.MeshStandardMaterial({ map: grassTex, roughness: 1 }));
+ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
+
+function shadowify(m) { m.castShadow = true; m.receiveShadow = true; return m; }
+const wallBoxes = [];
+function addBox(w, h, d, x, y, z, mat) { const m = shadowify(new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat)); m.position.set(x, y, z); scene.add(m); return m; }
+
+// ---------- A few houses in the background (same town look) ----------
+const whiteMat = new THREE.MeshStandardMaterial({ color: 0xe8e2d4, roughness: 0.9 });
+const litGlassMat = new THREE.MeshStandardMaterial({ color: 0x3a2c10, emissive: 0xffb54d, emissiveIntensity: 1.4, roughness: 0.4 });
+function addWindow(x, y, z, rotY) {
+  const g = new THREE.Group();
+  g.add(new THREE.Mesh(new THREE.BoxGeometry(1.35, 1.55, 0.12), whiteMat));
+  g.add(new THREE.Mesh(new THREE.BoxGeometry(1.05, 1.25, 0.14), litGlassMat));
+  g.position.set(x, y, z); g.rotation.y = rotY || 0; scene.add(g);
+}
+function makeHouse(bx, bz, w, d, color, roofColor) {
+  const h = 3.4, t = 0.5;
+  const wallMat = new THREE.MeshStandardMaterial({ color, map: plasterTex, roughness: 0.95 });
+  addBox(w, h, t, bx, h / 2, bz - d / 2, wallMat); addBox(w, h, t, bx, h / 2, bz + d / 2, wallMat);
+  addBox(t, h, d, bx - w / 2, h / 2, bz, wallMat); addBox(t, h, d, bx + w / 2, h / 2, bz, wallMat);
+  const roof = shadowify(new THREE.Mesh(new THREE.ConeGeometry(1, 1, 4), new THREE.MeshStandardMaterial({ color: roofColor, flatShading: true, roughness: 0.9 })));
+  roof.rotation.y = Math.PI / 4; roof.scale.set((w / 2 + 0.7) / 0.707, 2.1, (d / 2 + 0.7) / 0.707); roof.position.set(bx, h + 1.05, bz); scene.add(roof);
+  addWindow(bx - w / 4, 1.8, bz + d / 2 + 0.06, 0); addWindow(bx + w / 4, 1.8, bz + d / 2 + 0.06, 0);
+  const dl = new THREE.PointLight(0xffb45e, 0.7, 12, 2); dl.position.set(bx, 2, bz + d / 2 + 1); scene.add(dl);
+}
+makeHouse(-16, -14, 10, 8, 0xf6d47c, 0xc25e4a);
+makeHouse(16, -15, 9, 8, 0xf0a488, 0x7a5140);
+makeHouse(-18, 13, 8, 7, 0xaedbde, 0x3f7d84);
+makeHouse(18, 12, 10, 9, 0xd4b9ee, 0x6a4d93);
+const trunkMat = new THREE.MeshStandardMaterial({ color: 0x6e4728, roughness: 1 });
+function makeTree(x, z) {
+  const trunk = shadowify(new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.45, 2.4, 8), trunkMat));
+  trunk.position.set(x, 1.2, z); scene.add(trunk);
+  const m = new THREE.MeshStandardMaterial({ color: 0x2b5e34, roughness: 1 });
+  const c1 = shadowify(new THREE.Mesh(new THREE.ConeGeometry(2.1, 3, 9), m)); c1.position.set(x, 3.4, z);
+  const c2 = shadowify(new THREE.Mesh(new THREE.ConeGeometry(1.5, 2.4, 9), m)); c2.position.set(x, 5.2, z);
+  scene.add(c1, c2);
+}
+[[-24,10],[24,16],[-25,-18],[25,-20],[0,-26],[-26,0],[26,0]].forEach(p => makeTree(p[0], p[1]));
+
+// ---------- The domino table (center of the map) ----------
+const table = new THREE.Group();
+const TABLE_R = 1.7, TABLE_H = 0.92;
+const topMat = new THREE.MeshStandardMaterial({ map: woodTex, roughness: 0.6, metalness: 0.05 });
+const tableTop = shadowify(new THREE.Mesh(new THREE.CylinderGeometry(TABLE_R, TABLE_R, 0.16, 40), topMat));
+tableTop.position.y = TABLE_H; table.add(tableTop);
+const feltMat = new THREE.MeshStandardMaterial({ color: 0x1f6b3a, roughness: 0.95 });
+const felt = new THREE.Mesh(new THREE.CylinderGeometry(TABLE_R - 0.18, TABLE_R - 0.18, 0.02, 40), feltMat);
+felt.position.y = TABLE_H + 0.09; felt.receiveShadow = true; table.add(felt);
+const legMat = new THREE.MeshStandardMaterial({ color: 0x4a2f19, roughness: 0.8 });
+const centerLeg = shadowify(new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.28, TABLE_H, 12), legMat));
+centerLeg.position.y = TABLE_H / 2; table.add(centerLeg);
+const foot = shadowify(new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.8, 0.08, 16), legMat));
+foot.position.y = 0.04; table.add(foot);
+scene.add(table);
+
+// Cozy hanging lamp over the table
+const lampCord = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 2.2, 6), new THREE.MeshStandardMaterial({ color: 0x222 }));
+lampCord.position.set(0, TABLE_H + 3.1, 0); scene.add(lampCord);
+const lampShade = new THREE.Mesh(new THREE.ConeGeometry(0.6, 0.5, 20, 1, true), new THREE.MeshStandardMaterial({ color: 0x2b2f3a, side: THREE.DoubleSide, metalness: 0.5, roughness: 0.5 }));
+lampShade.position.set(0, TABLE_H + 2.0, 0); scene.add(lampShade);
+const lampBulb = new THREE.Mesh(new THREE.SphereGeometry(0.16, 12, 10), new THREE.MeshStandardMaterial({ color: 0xffe9a8, emissive: 0xffd580, emissiveIntensity: 2 }));
+lampBulb.position.set(0, TABLE_H + 1.85, 0); scene.add(lampBulb);
+const tableLight = new THREE.PointLight(0xffd9a0, 1.7, 12, 2);
+tableLight.position.set(0, TABLE_H + 1.8, 0); tableLight.castShadow = true; scene.add(tableLight);
+
+// ---------- Seats: positions around the table ----------
+const SEAT_R = 3.0;
+function seatPos(i, n) { const a = (i / n) * Math.PI * 2; return { x: Math.sin(a) * SEAT_R, z: Math.cos(a) * SEAT_R }; }
+function makeChair(x, z) {
+  const a = Math.atan2(-x, -z);
+  const chairMat = new THREE.MeshStandardMaterial({ color: 0x5a3a24, roughness: 0.8 });
+  const seat = shadowify(new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.1, 0.7), chairMat));
+  seat.position.set(x, 0.55, z);
+  const back = shadowify(new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.7, 0.1), chairMat));
+  back.position.set(x - Math.sin(a) * 0.32, 0.9, z - Math.cos(a) * 0.32); back.rotation.y = a;
+  scene.add(seat, back);
+}
+
+// Player avatars (little people) + floating name tags
+function makeAvatar(color) {
+  const g = new THREE.Group();
+  const bodyMat = new THREE.MeshStandardMaterial({ color, roughness: 0.8 });
+  const skin = new THREE.MeshStandardMaterial({ color: 0xf7d7b0, roughness: 0.8 });
+  const dark = new THREE.MeshStandardMaterial({ color: 0x1c1c1c, roughness: 0.6 });
+  const body = shadowify(new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.4, 0.8, 12), bodyMat)); body.position.y = 0.42;
+  const head = shadowify(new THREE.Mesh(new THREE.SphereGeometry(0.33, 14, 12), skin)); head.position.y = 1.05;
+  const cap = new THREE.Mesh(new THREE.SphereGeometry(0.35, 14, 8, 0, 6.28, 0, Math.PI / 2), bodyMat); cap.position.y = 1.08;
+  const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 5), dark); eyeL.position.set(-0.11, 1.07, 0.29);
+  const eyeR = eyeL.clone(); eyeR.position.x = 0.11;
+  const armL = shadowify(new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.075, 0.5, 8), bodyMat)); armL.position.set(-0.4, 0.6, 0.15); armL.rotation.x = -0.9;
+  const armR = armL.clone(); armR.position.x = 0.4;
+  g.add(body, head, cap, eyeL, eyeR, armL, armR);
+  return g;
+}
+function makeNameTag(name) {
+  const c = document.createElement('canvas'); c.width = 256; c.height = 64;
+  const x = c.getContext('2d');
+  function draw(glow) {
+    x.clearRect(0, 0, 256, 64);
+    x.fillStyle = glow ? 'rgba(30,90,40,0.92)' : 'rgba(12,16,28,0.85)';
+    x.strokeStyle = glow ? '#7df29a' : '#2a3350'; x.lineWidth = 3;
+    roundRect(x, 6, 10, 244, 44, 12); x.fill(); x.stroke();
+    x.fillStyle = glow ? '#dcffe4' : '#ffe9b0'; x.font = '900 30px Nunito, sans-serif';
+    x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(name, 128, 34);
+  }
+  function roundRect(ctx, rx, ry, w, h, r) { ctx.beginPath(); ctx.moveTo(rx + r, ry); ctx.arcTo(rx + w, ry, rx + w, ry + h, r); ctx.arcTo(rx + w, ry + h, rx, ry + h, r); ctx.arcTo(rx, ry + h, rx, ry, r); ctx.arcTo(rx, ry, rx + w, ry, r); ctx.closePath(); }
+  const tex = new THREE.CanvasTexture(c); draw(false);
+  const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, fog: false }));
+  spr.scale.set(1.7, 0.42, 1);
+  spr.userData = { setTalking: on => { draw(on); tex.needsUpdate = true; } };
+  return spr;
+}
+
+// ---------- HUD refs ----------
+const msgEl = document.getElementById('message');
+let msgTimer = null;
+function say(t) { msgEl.textContent = t; msgEl.style.opacity = 1; clearTimeout(msgTimer); msgTimer = setTimeout(() => msgEl.style.opacity = 0, 3000); }
+const turnBox = document.getElementById('turnBox');
+const boneBox = document.getElementById('boneBox');
+
+// =====================================================================
+//  DOMINOES ENGINE (host-authoritative)
+// =====================================================================
+function fullSet() { const s = []; for (let a = 0; a <= 6; a++) for (let b = a; b <= 6; b++) s.push([a, b]); return s; }
+function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+function pips(hand) { return hand.reduce((s, t) => s + t[0] + t[1], 0); }
+function tileMatches(t, L, R) { return t[0] === L || t[1] === L || t[0] === R || t[1] === R; }
+function handCanPlay(hand, L, R, boardEmpty) { return boardEmpty || hand.some(t => tileMatches(t, L, R)); }
+
+// =====================================================================
+//  MULTIPLAYER + VOICE
+// =====================================================================
+const COLORS = [0xe4538a, 0x5a67d8, 0x1d9e75, 0xe0a030, 0x35b5c9, 0xb060d0];
+const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const PEER_PREFIX = 'domino2-';
+
+let peer = null, myId = null, isHost = false, hostConn = null;
+const conns = [];
+let phase = 'menu';
+let myName = 'Player', roomCode = '';
+const players = new Map();     // host: id -> {id,name,color,seat}
+let roster = [];              // [{id,name,color,seat}] known to everyone
+let G = null;                // host game state
+let view = null;             // my personalised view of the game
+
+// Voice
+let localStream = null, talking = false;
+const audioEls = new Map();  // peerId -> <audio>
+const mediaCalls = new Map();
+
+// Avatars in the scene
+const avatars = new Map();    // id -> { group, tag }
+
+function genCode() { let c = ''; for (let i = 0; i < 4; i++) c += CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)]; return c; }
+function broadcast(o) { conns.forEach(c => { try { if (c.open) c.send(o); } catch (e) {} }); }
+function rosterArr() { return [...players.values()].map(p => ({ id: p.id, name: p.name, color: p.color, seat: p.seat })); }
+
+// ----- Overlay / lobby UI -----
+const startOverlay = document.getElementById('startOverlay');
+const menuView = document.getElementById('menuView');
+const lobbyView = document.getElementById('lobbyView');
+const endOverlay = document.getElementById('endOverlay');
+const nameInput = document.getElementById('nameInput');
+const codeInput = document.getElementById('codeInput');
+const menuErr = document.getElementById('menuErr');
+const lobbyErr = document.getElementById('lobbyErr');
+const startBtn = document.getElementById('startBtn');
+const waitHint = document.getElementById('waitHint');
+const roomCodeEl = document.getElementById('roomCode');
+const playerListEl = document.getElementById('playerList');
+
+function showLobby() {
+  startOverlay.classList.remove('hidden'); menuView.classList.add('hidden'); lobbyView.classList.remove('hidden');
+  roomCodeEl.textContent = roomCode;
+  startBtn.classList.toggle('hidden', !isHost); waitHint.classList.toggle('hidden', isHost);
+  updateLobbyList();
+}
+function updateLobbyList() {
+  const list = isHost ? rosterArr() : roster;
+  playerListEl.innerHTML = '';
+  list.forEach(p => {
+    const li = document.createElement('li');
+    const sw = document.createElement('span'); sw.className = 'swatch'; sw.style.background = '#' + p.color.toString(16).padStart(6, '0');
+    li.appendChild(sw); li.appendChild(document.createTextNode(p.name + (p.id === myId ? ' (you)' : '')));
+    playerListEl.appendChild(li);
+  });
+  if (isHost) { startBtn.disabled = players.size < 2; startBtn.textContent = players.size < 2 ? 'Need 2+ players…' : 'Start game (' + players.size + ')'; }
+}
+roomCodeEl.onclick = () => { if (navigator.clipboard) navigator.clipboard.writeText(roomCode).then(() => say('Code copied!'), () => {}); };
+
+// ----- Create / join -----
+document.getElementById('createBtn').onclick = () => {
+  if (!window.Peer) { menuErr.textContent = 'Online library did not load — check internet and refresh.'; return; }
+  myName = (nameInput.value.trim() || 'Player').slice(0, 12);
+  roomCode = genCode(); menuErr.textContent = 'Creating table…';
+  peer = new Peer(PEER_PREFIX + roomCode, { debug: 0 });
+  peer.on('open', id => {
+    myId = id; isHost = true; phase = 'lobby'; players.clear();
+    players.set(id, { id, name: myName, color: COLORS[0], seat: 0 });
+    menuErr.textContent = ''; setupVoice(); showLobby();
+  });
+  peer.on('connection', c => setupHostConn(c));
+  peer.on('call', answerCall);
+  peer.on('error', e => {
+    if (e.type === 'unavailable-id') { roomCode = genCode(); peer.destroy(); document.getElementById('createBtn').onclick(); }
+    else menuErr.textContent = 'Could not create table (' + e.type + ').';
+  });
+};
+function setupHostConn(conn) {
+  conn.on('open', () => conns.push(conn));
+  conn.on('data', d => onHostData(conn, d));
+  conn.on('close', () => {
+    const i = conns.indexOf(conn); if (i >= 0) conns.splice(i, 1);
+    if (players.has(conn.peer)) { const nm = players.get(conn.peer).name; players.delete(conn.peer); say(nm + ' left'); }
+    reseat(); broadcast({ t: 'lobby', roster: rosterArr() }); updateLobbyList();
+    dropAudio(conn.peer);
+  });
+  conn.on('error', () => {});
+}
+function reseat() { let s = 0; players.forEach(p => p.seat = s++); }
+function onHostData(conn, msg) {
+  const id = conn.peer;
+  if (msg.t === 'hello') {
+    if (!players.has(id) && players.size < 6) {
+      players.set(id, { id, name: (msg.name || 'Player').slice(0, 12), color: COLORS[players.size % COLORS.length], seat: players.size });
+    }
+    conn.send({ t: 'welcome', id });
+    broadcast({ t: 'lobby', roster: rosterArr() });
+    updateLobbyList(); say((msg.name || 'A player') + ' joined');
+    if (phase === 'playing') sendGameState();
+  } else if (msg.t === 'play')  { hostTryPlay(id, msg.tile, msg.side); }
+  else if (msg.t === 'draw')    { hostTryDraw(id); }
+  else if (msg.t === 'pass')    { hostTryPass(id); }
+  else if (msg.t === 'talk')    { broadcast({ t: 'talk', id, on: msg.on }); setAvatarTalking(id, msg.on); }
+}
+document.getElementById('joinBtn').onclick = () => {
+  if (!window.Peer) { menuErr.textContent = 'Online library did not load — check internet and refresh.'; return; }
+  const code = codeInput.value.trim().toUpperCase();
+  if (code.length !== 4) { menuErr.textContent = 'Enter the 4-letter room code.'; return; }
+  myName = (nameInput.value.trim() || 'Player').slice(0, 12); roomCode = code; menuErr.textContent = 'Connecting…';
+  peer = new Peer({ debug: 0 });
+  peer.on('open', id => {
+    myId = id; isHost = false; setupVoice();
+    hostConn = peer.connect(PEER_PREFIX + code, { reliable: true });
+    hostConn.on('open', () => { hostConn.send({ t: 'hello', name: myName }); phase = 'lobby'; menuErr.textContent = ''; showLobby(); });
+    hostConn.on('data', d => onClientData(d));
+    hostConn.on('close', () => { if (phase !== 'over') endLocal('The host left — the game is over.'); });
+    hostConn.on('error', () => { menuErr.textContent = 'Could not reach that table. Check the code.'; });
+    setTimeout(() => { if (phase === 'menu') menuErr.textContent = 'No table with that code (or the connection is blocked).'; }, 6000);
+  });
+  peer.on('call', answerCall);
+  peer.on('error', e => { menuErr.textContent = 'Could not join (' + e.type + ').'; });
+};
+function onClientData(msg) {
+  if (msg.t === 'welcome') myId = msg.id;
+  else if (msg.t === 'lobby') { roster = msg.roster; updateLobbyList(); if (phase === 'lobby') callEveryone(); }
+  else if (msg.t === 'game') { view = msg; roster = msg.roster; enterPlaying(); renderGame(); }
+  else if (msg.t === 'talk') setAvatarTalking(msg.id, msg.on);
+  else if (msg.t === 'over') showEnd(msg.title, msg.text);
+  else if (msg.t === 'msg') say(msg.text);
+}
+
+// ----- Start / deal (host) -----
+startBtn.onclick = () => { if (isHost && players.size >= 2) startRound(); };
+document.getElementById('againBtn').onclick = () => { if (isHost) startRound(); };
+
+function startRound() {
+  reseat();
+  const ids = [...players.keys()];
+  const n = ids.length;
+  const deck = shuffle(fullSet());
+  const per = n === 2 ? 7 : 5;
+  const hands = {};
+  ids.forEach(id => hands[id] = deck.splice(0, per));
+  // starting player: highest double, else heaviest tile
+  let startId = ids[0], best = -1;
+  ids.forEach(id => hands[id].forEach(t => {
+    const score = (t[0] === t[1] ? 100 : 0) + t[0] + t[1];
+    if (score > best) { best = score; startId = id; }
+  }));
+  G = { hands, board: [], leftEnd: null, rightEnd: null, boneyard: deck,
+        order: ids.slice(), turnIdx: ids.indexOf(startId), winner: null, passes: 0 };
+  phase = 'playing';
+  broadcast({ t: 'msg', text: 'New round! ' + players.get(startId).name + ' goes first.' });
+  sendGameState();
+  enterPlaying(); renderGame();
+  say('New round! ' + (startId === myId ? 'You go first.' : players.get(startId).name + ' goes first.'));
+}
+
+function personalView(id) {
+  const counts = {}; G.order.forEach(pid => counts[pid] = G.hands[pid].length);
+  return { t: 'game', roster: rosterArr(), hand: G.hands[id], board: G.board,
+    leftEnd: G.leftEnd, rightEnd: G.rightEnd, boneyard: G.boneyard.length,
+    counts, turnId: G.order[G.turnIdx], you: id };
+}
+function sendGameState() {
+  roster = rosterArr();   // keep the host's own roster in sync for the HUD/seating
+  players.forEach(p => { if (p.id === myId) { view = personalView(myId); } else { const c = conns.find(cn => cn.peer === p.id); if (c) c.send(personalView(p.id)); } });
+}
+
+// ----- Host move validation -----
+function currentId() { return G.order[G.turnIdx]; }
+function advanceTurn() { G.turnIdx = (G.turnIdx + 1) % G.order.length; }
+function hostTryPlay(id, tile, side) {
+  if (!G || id !== currentId() || G.winner) return;
+  const hand = G.hands[id];
+  const idx = hand.findIndex(t => (t[0] === tile[0] && t[1] === tile[1]) || (t[0] === tile[1] && t[1] === tile[0]));
+  if (idx < 0) return;
+  const boardEmpty = G.board.length === 0;
+  let placed = false;
+  let [a, b] = hand[idx];
+  if (boardEmpty) { G.board.push([a, b]); G.leftEnd = a; G.rightEnd = b; placed = true; }
+  else if (side === 'L') {
+    if (b === G.leftEnd) { G.board.unshift([a, b]); G.leftEnd = a; placed = true; }
+    else if (a === G.leftEnd) { G.board.unshift([b, a]); G.leftEnd = b; placed = true; }
+  } else {
+    if (a === G.rightEnd) { G.board.push([a, b]); G.rightEnd = b; placed = true; }
+    else if (b === G.rightEnd) { G.board.push([b, a]); G.rightEnd = a; placed = true; }
+  }
+  if (!placed) return;
+  hand.splice(idx, 1); G.passes = 0;
+  if (hand.length === 0) { finishRound(id, null); return; }
+  advanceTurn(); sendGameState();
+}
+function hostTryDraw(id) {
+  if (!G || id !== currentId() || G.winner) return;
+  if (G.boneyard.length === 0) return;
+  if (handCanPlay(G.hands[id], G.leftEnd, G.rightEnd, G.board.length === 0)) return; // only draw when stuck
+  G.hands[id].push(G.boneyard.pop());
+  sendGameState();
+}
+function hostTryPass(id) {
+  if (!G || id !== currentId() || G.winner) return;
+  if (G.boneyard.length > 0) return; // must draw first
+  if (handCanPlay(G.hands[id], G.leftEnd, G.rightEnd, G.board.length === 0)) return; // can't pass if you can play
+  G.passes++; advanceTurn();
+  if (G.passes >= G.order.length) { // everyone stuck -> lowest pips wins
+    let win = G.order[0], low = Infinity;
+    G.order.forEach(pid => { const p = pips(G.hands[pid]); if (p < low) { low = p; win = pid; } });
+    finishRound(win, 'blocked'); return;
+  }
+  sendGameState();
+}
+function finishRound(winId, reason) {
+  G.winner = winId;
+  const name = players.get(winId) ? players.get(winId).name : 'Someone';
+  const title = (winId === myId) ? 'You win!' : name + ' wins!';
+  const text = reason === 'blocked' ? 'The game locked up — ' + name + ' had the fewest pips left.' : name + ' played their last tile!';
+  sendGameState();
+  broadcast({ t: 'over', title: title, text: text });
+  showEnd(title, text);
+}
+
+// =====================================================================
+//  VOICE (push to talk)
+// =====================================================================
+function setupVoice() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
+  navigator.mediaDevices.getUserMedia({ audio: true, video: false }).then(stream => {
+    localStream = stream;
+    localStream.getAudioTracks().forEach(tr => tr.enabled = false); // muted until you hold to talk
+    document.getElementById('talkBtn').classList.remove('hidden');
+    callEveryone();
+  }).catch(() => { say('Mic not available — you can still play, just no voice.'); });
+}
+function knownPeerIds() {
+  const ids = new Set();
+  if (isHost) players.forEach(p => { if (p.id !== myId) ids.add(p.id); });
+  else roster.forEach(p => { if (p.id !== myId) ids.add(p.id); });
+  return [...ids];
+}
+function callEveryone() {
+  if (!localStream || !peer) return;
+  knownPeerIds().forEach(pid => {
+    if (mediaCalls.has(pid)) return;
+    if (myId < pid) { // only one side initiates to avoid duplicates
+      const call = peer.call(pid, localStream);
+      if (call) { mediaCalls.set(pid, call); call.on('stream', s => attachAudio(pid, s)); call.on('close', () => dropAudio(pid)); }
+    }
+  });
+}
+function answerCall(call) {
+  if (localStream) call.answer(localStream); else call.answer();
+  mediaCalls.set(call.peer, call);
+  call.on('stream', s => attachAudio(call.peer, s));
+  call.on('close', () => dropAudio(call.peer));
+}
+function attachAudio(pid, stream) {
+  let a = audioEls.get(pid);
+  if (!a) { a = document.createElement('audio'); a.autoplay = true; a.playsInline = true; document.body.appendChild(a); audioEls.set(pid, a); }
+  a.srcObject = stream; a.play && a.play().catch(() => {});
+}
+function dropAudio(pid) {
+  const a = audioEls.get(pid); if (a) { a.srcObject = null; a.remove(); audioEls.delete(pid); }
+  const c = mediaCalls.get(pid); if (c) { try { c.close(); } catch (e) {} mediaCalls.delete(pid); }
+}
+function startTalk() {
+  if (talking) return; talking = true;
+  if (localStream) localStream.getAudioTracks().forEach(tr => tr.enabled = true);
+  document.getElementById('talkBtn').classList.add('talking');
+  sendTalk(true); setAvatarTalking(myId, true);
+}
+function stopTalk() {
+  if (!talking) return; talking = false;
+  if (localStream) localStream.getAudioTracks().forEach(tr => tr.enabled = false);
+  document.getElementById('talkBtn').classList.remove('talking');
+  sendTalk(false); setAvatarTalking(myId, false);
+}
+function sendTalk(on) { if (isHost) { broadcast({ t: 'talk', id: myId, on }); } else if (hostConn && hostConn.open) hostConn.send({ t: 'talk', on }); }
+addEventListener('keydown', e => { if (e.code === 'Space' && phase === 'playing') { e.preventDefault(); startTalk(); } });
+addEventListener('keyup', e => { if (e.code === 'Space') { e.preventDefault(); stopTalk(); } });
+const talkBtn = document.getElementById('talkBtn');
+talkBtn.addEventListener('touchstart', e => { e.preventDefault(); startTalk(); }, { passive: false });
+talkBtn.addEventListener('touchend', e => { e.preventDefault(); stopTalk(); }, { passive: false });
+talkBtn.addEventListener('mousedown', () => startTalk());
+addEventListener('mouseup', () => stopTalk());
+
+// =====================================================================
+//  SEATING + AVATARS (built from roster; camera at my seat)
+// =====================================================================
+let mySeat = 0, seatCount = 2;
+function setAvatarTalking(id, on) { const a = avatars.get(id); if (a && a.tag) a.tag.userData.setTalking(on); }
+function buildSeats() {
+  const list = roster.length ? roster : rosterArr();
+  seatCount = Math.max(2, list.length);
+  const me = list.find(p => p.id === myId);
+  mySeat = me ? me.seat : 0;
+  // remove avatars for players no longer present
+  const present = new Set(list.map(p => p.id));
+  avatars.forEach((a, id) => { if (!present.has(id)) { scene.remove(a.group); scene.remove(a.tag); avatars.delete(id); } });
+  list.forEach(p => {
+    const pos = seatPos(p.seat, seatCount);
+    makeChair(pos.x, pos.z);
+    if (p.id === myId) return; // you are the camera
+    let a = avatars.get(p.id);
+    if (!a) {
+      const group = makeAvatar(p.color); const tag = makeNameTag(p.name);
+      scene.add(group); scene.add(tag); a = { group, tag }; avatars.set(p.id, a);
+    }
+    a.group.position.set(pos.x, 0, pos.z);
+    a.group.rotation.y = Math.atan2(-pos.x, -pos.z);
+    a.tag.position.set(pos.x, 1.8, pos.z);
+  });
+}
+
+// =====================================================================
+//  GAME UI (hand + board)
+// =====================================================================
+const boardWrap = document.getElementById('boardWrap');
+const boardEl = document.getElementById('board');
+const handWrap = document.getElementById('handWrap');
+const handEl = document.getElementById('hand');
+const drawBtn = document.getElementById('drawBtn');
+const passBtn = document.getElementById('passBtn');
+const PIPMAP = { 0: [], 1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8] };
+function halfEl(v) { const h = document.createElement('div'); h.className = 'half'; for (let i = 0; i < 9; i++) { const s = document.createElement('span'); if (PIPMAP[v].includes(i)) s.className = 'pip'; h.appendChild(s); } return h; }
+function dominoEl(a, b, small) {
+  const d = document.createElement('div'); d.className = 'domino' + (small ? ' small' : '');
+  d.appendChild(halfEl(a)); const dv = document.createElement('div'); dv.className = 'divider'; d.appendChild(dv); d.appendChild(halfEl(b));
+  return d;
+}
+let selected = null;
+function enterPlaying() { phase = 'playing'; startOverlay.classList.add('hidden'); endOverlay.classList.add('hidden'); boardWrap.classList.remove('hidden'); handWrap.classList.remove('hidden'); buildSeats(); }
+function renderGame() {
+  if (!view) return;
+  buildSeats();
+  // board
+  boardEl.innerHTML = '';
+  if (view.board.length === 0) { const s = document.createElement('span'); s.className = 'end'; s.textContent = 'Empty board — play any tile'; boardEl.appendChild(s); }
+  else {
+    const l = document.createElement('span'); l.className = 'end'; l.textContent = '◄ ' + view.leftEnd; boardEl.appendChild(l);
+    view.board.forEach(t => boardEl.appendChild(dominoEl(t[0], t[1], true)));
+    const r = document.createElement('span'); r.className = 'end'; r.textContent = view.rightEnd + ' ►'; boardEl.appendChild(r);
+  }
+  boneBox.textContent = 'Boneyard: ' + view.boneyard;
+  // turn
+  const myTurn = view.turnId === myId;
+  const turnName = (roster.find(p => p.id === view.turnId) || {}).name || '…';
+  turnBox.textContent = myTurn ? '★ Your turn' : (turnName + "'s turn");
+  turnBox.style.color = myTurn ? '#7df29a' : '#ffe9b0';
+  // hand
+  handEl.innerHTML = ''; selected = null;
+  const boardEmpty = view.board.length === 0;
+  view.hand.forEach(t => {
+    const el = dominoEl(t[0], t[1], false);
+    const canL = boardEmpty || t[0] === view.leftEnd || t[1] === view.leftEnd;
+    const canR = boardEmpty || t[0] === view.rightEnd || t[1] === view.rightEnd;
+    const canPlay = boardEmpty || canL || canR;
+    if (myTurn && canPlay) { el.classList.add('playable'); el.onclick = () => choosePlay(t, canL, canR, boardEmpty); }
+    handEl.appendChild(el);
+  });
+  // actions
+  const canPlayAny = myTurn && (boardEmpty || view.hand.some(t => t[0] === view.leftEnd || t[1] === view.leftEnd || t[0] === view.rightEnd || t[1] === view.rightEnd));
+  drawBtn.classList.toggle('hidden', !(myTurn && !canPlayAny && view.boneyard > 0));
+  passBtn.classList.toggle('hidden', !(myTurn && !canPlayAny && view.boneyard === 0));
+}
+function send(o) { if (isHost) { if (o.t === 'play') hostTryPlay(myId, o.tile, o.side); else if (o.t === 'draw') hostTryDraw(myId); else if (o.t === 'pass') hostTryPass(myId); } else if (hostConn && hostConn.open) hostConn.send(o); }
+function choosePlay(tile, canL, canR, boardEmpty) {
+  if (boardEmpty) { send({ t: 'play', tile, side: 'R' }); return; }
+  if (canL && !canR) { send({ t: 'play', tile, side: 'L' }); return; }
+  if (canR && !canL) { send({ t: 'play', tile, side: 'R' }); return; }
+  // both ends work — ask which
+  say('Tap ◄ Left end or Right end ►');
+  turnBox.textContent = 'Play on which end?';
+  const oldBoard = boardWrap.onclick;
+  const l = document.createElement('button'); l.className = 'btn'; l.textContent = '◄ Left (' + view.leftEnd + ')';
+  const r = document.createElement('button'); r.className = 'btn blue'; r.textContent = 'Right (' + view.rightEnd + ') ►';
+  const bar = document.createElement('div'); bar.style.cssText = 'display:flex;gap:10px;justify-content:center;margin-top:8px'; bar.appendChild(l); bar.appendChild(r);
+  handEl.innerHTML = ''; handEl.appendChild(bar);
+  l.onclick = () => send({ t: 'play', tile, side: 'L' });
+  r.onclick = () => send({ t: 'play', tile, side: 'R' });
+}
+drawBtn.onclick = () => send({ t: 'draw' });
+passBtn.onclick = () => send({ t: 'pass' });
+
+function showEnd(title, text) {
+  phase = 'over';
+  document.getElementById('endTitle').textContent = title;
+  document.getElementById('endText').textContent = text;
+  document.getElementById('againBtn').classList.toggle('hidden', !isHost);
+  document.getElementById('endWait').classList.toggle('hidden', isHost);
+  endOverlay.classList.remove('hidden');
+}
+function endLocal(text) { phase = 'over'; document.getElementById('endTitle').textContent = 'Disconnected'; document.getElementById('endText').textContent = text; document.getElementById('againBtn').classList.add('hidden'); document.getElementById('endWait').classList.add('hidden'); endOverlay.classList.remove('hidden'); }
+
+// =====================================================================
+//  RENDER LOOP
+// =====================================================================
+const clock = new THREE.Clock();
+function animate() {
+  requestAnimationFrame(animate);
+  const t = clock.elapsedTime;
+  lampBulb.material.emissiveIntensity = 1.8 + Math.sin(t * 8) * 0.15;
+  // Camera sits at my seat, looking at the table
+  const pos = seatPos(mySeat, seatCount);
+  camera.position.set(pos.x * 1.02, 1.55, pos.z * 1.02);
+  camera.lookAt(0, 0.75, 0);
+  // name tags face the camera automatically (sprites)
+  renderer.render(scene, camera);
+}
+buildSeats();
+animate();
+</script>
+</body>
+</html>
