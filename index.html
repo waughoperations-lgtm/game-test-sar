@@ -38,6 +38,10 @@
   #torchBtn { top: 12px; right: 12px; font-size: 16px; font-family: inherit; border: none;
               cursor: pointer; pointer-events: auto; }
   #torchBtn.off { color: #8b96b4; }
+  #ammoBox { top: 54px; left: 12px; font-size: 18px; color: #ffd27f; }
+  #fireBtn { bottom: 66px; right: 16px; font-size: 30px; padding: 10px 14px; border: none;
+             cursor: pointer; pointer-events: auto; border-radius: 50%; line-height: 1; }
+  #fireBtn:active { transform: scale(0.92); }
   #darkvig { position: fixed; inset: 0; z-index: 3; pointer-events: none;
              box-shadow: inset 0 0 230px 90px rgba(0,0,0,0.88); }
   #vignette { position: fixed; inset: 0; z-index: 4; pointer-events: none; opacity: 0;
@@ -49,6 +53,8 @@
 
 <div class="hud card" id="timer">2:00</div>
 <button class="hud card" id="torchBtn">🔦 Flashlight: ON</button>
+<div class="hud card hidden" id="ammoBox">🔫 0</div>
+<button class="hud card hidden" id="fireBtn">🔫</button>
 <div class="hud card" id="message"></div>
 <div class="hud" id="meterWrap">
   <div class="card" id="meterLabel">Danger</div>
@@ -570,9 +576,10 @@ function startGame() {
   timeLeft = 120;
   const sp = monsterSpawn();
   monster.x = sp.x; monster.z = sp.z; monster.targetX = sp.x; monster.targetZ = sp.z;
-  monster.state = 'wander'; monster.lostTimer = 0;
+  monster.state = 'wander'; monster.lostTimer = 0; monster.stunTimer = 0;
   monsterGroup.position.set(sp.x, 0, sp.z);
   monsterGroup.visible = true;
+  resetGun();
   setTorch(true);
   document.getElementById('vignette').style.opacity = 0;
   document.getElementById('startOverlay').classList.add('hidden');
@@ -581,14 +588,18 @@ function startGame() {
   say('The monster is awake… hide!');
 }
 
-function endGame(won) {
+function endGame(won, reason) {
   playing = false;
   setGrowl(0); sting(won ? 'win' : 'caught');
   document.getElementById('vignette').style.opacity = 0;
-  document.getElementById('endEmoji').textContent = won ? '🌅' : '👹';
-  document.getElementById('endTitle').textContent = won ? 'You survived!' : 'The monster got you!';
+  document.getElementById('endEmoji').textContent = won ? (reason === 'drove' ? '🔫' : '🌅') : '👹';
+  document.getElementById('endTitle').textContent = won
+    ? (reason === 'drove' ? 'You drove it off!' : 'You survived!')
+    : 'The monster got you!';
   document.getElementById('endText').textContent = won
-    ? 'You made it to sunrise without getting caught. You are the hide-and-seek champion — the monster goes back to sleep!'
+    ? (reason === 'drove'
+        ? 'You found the gun and blasted the monster until it fled screeching into the night. Well fought!'
+        : 'You made it to sunrise without getting caught. You are the hide-and-seek champion — the monster goes back to sleep!')
     : 'The monster found your hiding spot. Want another go? It will start from a new corner of town.';
   document.getElementById('endOverlay').classList.remove('hidden');
 }
@@ -773,6 +784,109 @@ function applyQuality() {
 function toggleQuality() { quality = quality === 'high' ? 'low' : 'high'; applyQuality(); say('Graphics: ' + (quality === 'high' ? 'High' : 'Low')); }
 addEventListener('keydown', e => { if (e.key.toLowerCase() === 'g') toggleQuality(); });
 
+// ---------- Gun: found randomly around town, used to fight back ----------
+const HITS_TO_WIN = 4, START_AMMO = 6;
+let hasGun = false, ammo = 0, monsterHP = HITS_TO_WIN, shootCd = 0, muzzleTimer = 0;
+const bullets = [];
+const ammoEl = document.getElementById('ammoBox');
+const fireBtn = document.getElementById('fireBtn');
+const raycaster = new THREE.Raycaster();
+const bulletGeo = new THREE.SphereGeometry(0.08, 6, 5);
+const bulletMat = new THREE.MeshBasicMaterial({ color: 0xffe089, fog: false });
+const muzzleLight = new THREE.PointLight(0xffd27f, 0, 11, 2);
+scene.add(muzzleLight);
+
+// The glowing pickup you find on the ground
+const gunPickup = new THREE.Group();
+(function buildGunPickup() {
+  const metal = new THREE.MeshStandardMaterial({ color: 0x2b2f3a, metalness: 0.8, roughness: 0.35, emissive: 0x0d0f14 });
+  const grip = new THREE.MeshStandardMaterial({ color: 0x5a3a24, roughness: 0.7 });
+  const barrel = new THREE.Mesh(new THREE.BoxGeometry(0.75, 0.17, 0.17), metal);
+  const handle = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.34, 0.17), grip);
+  handle.position.set(-0.24, -0.24, 0);
+  const glow = new THREE.Mesh(new THREE.SphereGeometry(0.55, 12, 10),
+    new THREE.MeshBasicMaterial({ color: 0x8fe6ff, transparent: true, opacity: 0.22, fog: false }));
+  const halo = new THREE.PointLight(0x7fd8ff, 1.3, 9, 2);
+  gunPickup.add(barrel, handle, glow, halo);
+  gunPickup.scale.setScalar(1.3);
+})();
+gunPickup.visible = false;
+scene.add(gunPickup);
+
+const GUN_SPOTS = [{x:0,z:13},{x:-9,z:20},{x:9,z:-17},{x:19,z:1},{x:-19,z:-3},{x:3,z:-3},{x:-4,z:16},{x:12,z:23},{x:-22,z:8},{x:22,z:-8}];
+function gunSpawn() {
+  const s = GUN_SPOTS[Math.floor(Math.random() * GUN_SPOTS.length)];
+  gunPickup.position.set(s.x, 1.0, s.z);
+  gunPickup.visible = true;
+}
+function resetGun() {
+  hasGun = false; ammo = 0; monsterHP = HITS_TO_WIN;
+  bullets.forEach(b => scene.remove(b)); bullets.length = 0;
+  ammoEl.classList.add('hidden'); fireBtn.classList.add('hidden');
+  gunSpawn();
+}
+function updateAmmo() { ammoEl.textContent = '🔫 ' + ammo; }
+function equipGun() {
+  hasGun = true; ammo = START_AMMO; gunPickup.visible = false;
+  ammoEl.classList.remove('hidden'); fireBtn.classList.remove('hidden');
+  updateAmmo(); thump(0.25);
+  say('You found a gun! ' + START_AMMO + ' shots — Space or 🔫 to fire.');
+}
+function shoot() {
+  if (!playing || !hasGun || ammo <= 0 || shootCd > 0) return;
+  ammo--; shootCd = 0.28; updateAmmo();
+  if (ammo === 0) say('Out of bullets!');
+  gunBang(); muzzleTimer = 0.06;
+  muzzleLight.position.set(player.x, 0.95, player.z);
+  const dir = new THREE.Vector3(
+    -Math.sin(player.yaw) * Math.cos(player.pitch),
+    Math.sin(player.pitch),
+    -Math.cos(player.yaw) * Math.cos(player.pitch));
+  // Visual tracer
+  const b = new THREE.Mesh(bulletGeo, bulletMat);
+  b.position.set(player.x + dir.x * 0.7, 0.95 + dir.y * 0.7, player.z + dir.z * 0.7);
+  b.userData = { d: dir, life: 0 };
+  scene.add(b); bullets.push(b);
+  // Instant hit check with a ray at the (huge) monster
+  if (monsterGroup.visible && monster.state !== 'dead') {
+    raycaster.set(new THREE.Vector3(player.x, 0.95, player.z), dir);
+    const hit = raycaster.intersectObject(monsterGroup, true);
+    if (hit.length && hit[0].distance < 45) hitMonster();
+  }
+}
+function hitMonster() {
+  if (monster.state === 'dead') return;
+  monsterHP--;
+  monsterHurt();
+  const kx = monster.x - player.x, kz = monster.z - player.z, kl = Math.hypot(kx, kz) || 1;
+  monster.x += kx / kl * 1.6; monster.z += kz / kl * 1.6;   // knock it back
+  monster.state = 'stunned'; monster.stunTimer = 1.8;
+  if (monsterHP <= 0) { monster.state = 'dead'; endGame(true, 'drove'); }
+  else say('Hit it! ' + monsterHP + ' more to drive it off');
+}
+function gunBang() {
+  if (!actx) return;
+  const t = actx.currentTime;
+  const src = actx.createBufferSource(); src.buffer = sound.nb;
+  const bp = actx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1300; bp.Q.value = 0.6;
+  const g = actx.createGain(); g.gain.setValueAtTime(0.5, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
+  src.connect(bp); bp.connect(g); g.connect(sound.master); src.start(t, Math.random() * 1.5, 0.15);
+  const o = actx.createOscillator(); o.type = 'sine'; o.frequency.setValueAtTime(120, t); o.frequency.exponentialRampToValueAtTime(40, t + 0.12);
+  const g2 = actx.createGain(); g2.gain.setValueAtTime(0.4, t); g2.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+  o.connect(g2); g2.connect(sound.master); o.start(t); o.stop(t + 0.2);
+}
+function monsterHurt() {
+  if (!actx) return;
+  const t = actx.currentTime;
+  const o = actx.createOscillator(); o.type = 'sawtooth';
+  o.frequency.setValueAtTime(320, t); o.frequency.exponentialRampToValueAtTime(70, t + 0.3);
+  const g = actx.createGain(); g.gain.setValueAtTime(0.3, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.36);
+  o.connect(g); g.connect(sound.master); o.start(t); o.stop(t + 0.4);
+}
+addEventListener('keydown', e => { if (e.code === 'Space') { e.preventDefault(); shoot(); } });
+fireBtn.addEventListener('touchstart', e => { e.preventDefault(); shoot(); }, { passive: false });
+fireBtn.addEventListener('mousedown', e => { e.preventDefault(); shoot(); });
+
 // ---------- Main loop ----------
 // Organic flicker: mostly steady near 1, with occasional unsettling dips.
 function flick(t, s) {
@@ -840,51 +954,63 @@ function animate() {
 
     // --- Monster brain ---
     const dToPlayer = Math.hypot(player.x - monster.x, player.z - monster.z);
-    const los = hasLineOfSight(monster.x, monster.z, player.x, player.z);
-    const sightRange = torchOn ? 23 : 9;               // your flashlight gives you away
-    const senses = (dToPlayer < sightRange && los) || dToPlayer < 4.5;  // it can hear you up close
-
-    if (senses) {
-      if (monster.state !== 'chase') { say('It spotted you — RUN!'); sting('chase'); }
-      monster.state = 'chase';
-      monster.targetX = player.x; monster.targetZ = player.z; monster.lostTimer = 0;
-    } else if (monster.state === 'chase') {
-      monster.lostTimer += dt;
-      const atLast = Math.hypot(monster.targetX - monster.x, monster.targetZ - monster.z) < 1.5;
-      if (monster.lostTimer > 4 || atLast) {
+    if (monster.state === 'dead') {
+      // Driven off — it no longer hunts.
+    } else if (monster.stunTimer > 0) {
+      // Reeling from a gunshot: frozen and harmless for a moment.
+      monster.stunTimer -= dt;
+      if (monster.stunTimer <= 0) {
         monster.state = 'wander';
         monster.targetX = (Math.random() * 2 - 1) * 30;
         monster.targetZ = (Math.random() * 2 - 1) * 30;
-        say('You lost it… for now.');
       }
-    }
-    if (monster.state === 'wander' &&
-        Math.hypot(monster.targetX - monster.x, monster.targetZ - monster.z) < 2) {
-      monster.targetX = (Math.random() * 2 - 1) * 30;
-      monster.targetZ = (Math.random() * 2 - 1) * 30;
-    }
+    } else {
+      const los = hasLineOfSight(monster.x, monster.z, player.x, player.z);
+      const sightRange = torchOn ? 23 : 9;               // your flashlight gives you away
+      const senses = (dToPlayer < sightRange && los) || dToPlayer < 4.5;  // it can hear you up close
 
-    // Move the monster toward its target, sliding along walls
-    const spd = (monster.state === 'chase' ? 5.2 : 3) * dt;
-    let mdx = monster.targetX - monster.x, mdz = monster.targetZ - monster.z;
-    const mlen = Math.hypot(mdx, mdz) || 1;
-    mdx = mdx / mlen * spd; mdz = mdz / mlen * spd;
-    const beforeX = monster.x, beforeZ = monster.z;
-    if (!collides(monster.x + mdx, monster.z, 1.3)) monster.x += mdx;
-    if (!collides(monster.x, monster.z + mdz, 1.3)) monster.z += mdz;
-    // If it wandered into a corner and got stuck, pick a fresh spot
-    if (monster.state === 'wander' &&
-        Math.hypot(monster.x - beforeX, monster.z - beforeZ) < spd * 0.3) {
-      monster.stuck = (monster.stuck || 0) + dt;
-      if (monster.stuck > 0.4) {
+      if (senses) {
+        if (monster.state !== 'chase') { say('It spotted you — RUN!'); sting('chase'); }
+        monster.state = 'chase';
+        monster.targetX = player.x; monster.targetZ = player.z; monster.lostTimer = 0;
+      } else if (monster.state === 'chase') {
+        monster.lostTimer += dt;
+        const atLast = Math.hypot(monster.targetX - monster.x, monster.targetZ - monster.z) < 1.5;
+        if (monster.lostTimer > 4 || atLast) {
+          monster.state = 'wander';
+          monster.targetX = (Math.random() * 2 - 1) * 30;
+          monster.targetZ = (Math.random() * 2 - 1) * 30;
+          say('You lost it… for now.');
+        }
+      }
+      if (monster.state === 'wander' &&
+          Math.hypot(monster.targetX - monster.x, monster.targetZ - monster.z) < 2) {
         monster.targetX = (Math.random() * 2 - 1) * 30;
         monster.targetZ = (Math.random() * 2 - 1) * 30;
-        monster.stuck = 0;
       }
-    } else monster.stuck = 0;
 
-    // Caught! (the giant monster grabs from further away)
-    if (dToPlayer < 2.7) { endGame(false); }
+      // Move the monster toward its target, sliding along walls
+      const spd = (monster.state === 'chase' ? 5.2 : 3) * dt;
+      let mdx = monster.targetX - monster.x, mdz = monster.targetZ - monster.z;
+      const mlen = Math.hypot(mdx, mdz) || 1;
+      mdx = mdx / mlen * spd; mdz = mdz / mlen * spd;
+      const beforeX = monster.x, beforeZ = monster.z;
+      if (!collides(monster.x + mdx, monster.z, 1.3)) monster.x += mdx;
+      if (!collides(monster.x, monster.z + mdz, 1.3)) monster.z += mdz;
+      // If it wandered into a corner and got stuck, pick a fresh spot
+      if (monster.state === 'wander' &&
+          Math.hypot(monster.x - beforeX, monster.z - beforeZ) < spd * 0.3) {
+        monster.stuck = (monster.stuck || 0) + dt;
+        if (monster.stuck > 0.4) {
+          monster.targetX = (Math.random() * 2 - 1) * 30;
+          monster.targetZ = (Math.random() * 2 - 1) * 30;
+          monster.stuck = 0;
+        }
+      } else monster.stuck = 0;
+
+      // Caught! (the giant monster grabs from further away)
+      if (dToPlayer < 2.7) { endGame(false); }
+    }
 
     // --- Danger meter + red screen glow ---
     let pct = Math.max(0, Math.min(1, 1 - (dToPlayer - 2.5) / 18));
@@ -909,11 +1035,35 @@ function animate() {
     const faceZ = (monster.state === 'chase' ? player.z : monster.targetZ) - monster.z;
     monsterGroup.rotation.y = Math.atan2(faceX, faceZ);
     monsterGroup.position.set(monster.x, Math.sin(t * 2.2) * 0.12, monster.z);
-    // Eyes smoulder red, and flare brighter while hunting
-    const hunting = monster.state === 'chase';
-    const pulse = hunting ? 0.5 + 0.5 * Math.abs(Math.sin(t * 6)) : 0.35;
-    monEyeMat.color.setRGB(0.6 + pulse * 0.4, 0.02 + pulse * 0.05, 0.0);
-    if (monEyeGlow) monEyeGlow.intensity = (hunting ? 1.6 : 1.0) * (0.7 + pulse * 0.5);
+    // Eyes: white when stunned, dim when driven off, otherwise smouldering red
+    if (monster.state === 'stunned') {
+      monEyeMat.color.setRGB(1.0, 0.9, 0.55);
+      if (monEyeGlow) monEyeGlow.intensity = 2.2;
+    } else if (monster.state === 'dead') {
+      monEyeMat.color.setRGB(0.15, 0.02, 0.0);
+      if (monEyeGlow) monEyeGlow.intensity = 0.1;
+    } else {
+      const hunting = monster.state === 'chase';
+      const pulse = hunting ? 0.5 + 0.5 * Math.abs(Math.sin(t * 6)) : 0.35;
+      monEyeMat.color.setRGB(0.6 + pulse * 0.4, 0.02 + pulse * 0.05, 0.0);
+      if (monEyeGlow) monEyeGlow.intensity = (hunting ? 1.6 : 1.0) * (0.7 + pulse * 0.5);
+    }
+
+    // --- Gun: spin the pickup, pick it up, fly bullets, fade the muzzle flash ---
+    if (gunPickup.visible) {
+      gunPickup.rotation.y += dt * 1.6;
+      gunPickup.position.y = 1.0 + Math.sin(t * 2) * 0.15;
+      if (!hasGun && Math.hypot(player.x - gunPickup.position.x, player.z - gunPickup.position.z) < 1.8) equipGun();
+    }
+    shootCd -= dt;
+    muzzleTimer -= dt;
+    muzzleLight.intensity = muzzleTimer > 0 ? 6 : 0;
+    for (let i = bullets.length - 1; i >= 0; i--) {
+      const b = bullets[i], sp = 55 * dt;
+      b.position.x += b.userData.d.x * sp; b.position.y += b.userData.d.y * sp; b.position.z += b.userData.d.z * sp;
+      b.userData.life += dt;
+      if (b.userData.life > 1.1 || Math.abs(b.position.x) > 60 || Math.abs(b.position.z) > 60) { scene.remove(b); bullets.splice(i, 1); }
+    }
   }
 
   camera.position.set(player.x, 0.95, player.z);   // you are a small "mini person"

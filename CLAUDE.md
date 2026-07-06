@@ -56,7 +56,12 @@ When working with them:
      quality toggle (`applyQuality`/`toggleQuality`, the ✨ Graphics button or the `g` key)
      controls bloom, mist amount, shadow resolution and pixel ratio; defaults to Low on
      phones. Bump maps on the ground and walls add surface relief.
-   - The monster's "brain" (wander vs. chase) lives inside the main `animate()` loop
+   - Optional gun: a glowing pickup (`gunPickup`/`gunSpawn`) appears at a random spot
+     each round. Walk over it to equip (`equipGun`, limited ammo); Space or the 🔫 button
+     fires (`shoot`) — a raycast against the monster. Hits `hitMonster` stun + knock it
+     back (`monster.state = 'stunned'`); `HITS_TO_WIN` hits drive it off for a win
+     (`endGame(true, 'drove')`). Gunshot/hurt sounds included.
+   - The monster's "brain" (wander vs. chase vs. stunned/dead) lives in the `animate()` loop
    - Main `animate()` loop
 
 ## How to test
