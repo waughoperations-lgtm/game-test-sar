@@ -30,6 +30,9 @@
                   border: none; border-radius: 14px; padding: 14px 34px; cursor: pointer; margin-top: 6px;
                   box-shadow: 0 4px 0 #b28a2e; }
   .panel button:active { transform: translateY(3px); box-shadow: 0 1px 0 #b28a2e; }
+  .panel button.qbtn { display: block; margin: 14px auto 0; font-size: 14px; padding: 9px 18px;
+                       background: #27304a; color: #cfe0ff; box-shadow: 0 3px 0 #151c2e; }
+  .panel button.qbtn:active { transform: translateY(2px); box-shadow: 0 1px 0 #151c2e; }
   .hidden { display: none !important; }
   #endOverlay .big { font-size: 46px; margin-bottom: 4px; }
   #torchBtn { top: 12px; right: 12px; font-size: 16px; font-family: inherit; border: none;
@@ -62,6 +65,7 @@
        <b>Phone or tablet:</b> slide your <b>left thumb</b> to walk, slide your <b>right thumb</b> to look around. Tap the 🔦 button to turn your flashlight on/off.</p>
     <p>Your flashlight helps you see &mdash; but it also gives you away! Turn it off and duck behind houses and bushes to lose the monster. The danger meter fills up as it closes in.</p>
     <button id="startBtn">Start hiding</button>
+    <button class="qbtn" id="qBtn">✨ Graphics: High</button>
   </div>
 </div>
 
@@ -71,10 +75,19 @@
     <h1 id="endTitle">You found everyone!</h1>
     <p id="endText"></p>
     <button id="againBtn">Play again</button>
+    <button class="qbtn" id="qBtn2">✨ Graphics: High</button>
   </div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<!-- Extra Three.js modules for the "glow" (bloom) effect. If any fail to load, the game
+     still runs — it just falls back to plain rendering. -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
 <script>
 // ---------- Renderer, scene, camera ----------
 const canvas = document.getElementById('game');
@@ -90,10 +103,15 @@ const scene = new THREE.Scene();
 scene.fog = new THREE.Fog(0x06070c, 9, 44);
 const camera = new THREE.PerspectiveCamera(72, 1, 0.1, 400);
 
+// Post-processing handles (set up later, in the graphics section)
+let composer = null, bloomPass = null, grainPass = null;
+
 function resize() {
   renderer.setSize(window.innerWidth, window.innerHeight);
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
+  if (composer) composer.setSize(window.innerWidth, window.innerHeight);
+  if (bloomPass) bloomPass.setSize(window.innerWidth, window.innerHeight);
 }
 window.addEventListener('resize', resize); resize();
 
@@ -202,7 +220,7 @@ for (let i = 0; i < 5; i++) {
 
 // ---------- Ground + paths ----------
 const ground = new THREE.Mesh(new THREE.PlaneGeometry(140, 140),
-  new THREE.MeshStandardMaterial({ map: grassTex, roughness: 1, metalness: 0 }));
+  new THREE.MeshStandardMaterial({ map: grassTex, bumpMap: grassTex, bumpScale: 0.09, roughness: 1, metalness: 0 }));
 ground.rotation.x = -Math.PI / 2;
 ground.receiveShadow = true;
 scene.add(ground);
@@ -256,7 +274,7 @@ function addWindow(x, y, z, rotY) {
 
 function makeHouse(bx, bz, w, d, color, roofColor, chimney) {
   const h = 3.4, t = 0.5, dw = 2.6, sw = (w - dw) / 2;
-  const wallMat = new THREE.MeshStandardMaterial({ color, map: plasterTex, roughness: 0.95 });
+  const wallMat = new THREE.MeshStandardMaterial({ color, map: plasterTex, bumpMap: plasterTex, bumpScale: 0.05, roughness: 0.95 });
   addBox(w, h, t, bx, h / 2, bz - d / 2, wallMat);
   addBox(t, h, d, bx - w / 2, h / 2, bz, wallMat);
   addBox(t, h, d, bx + w / 2, h / 2, bz, wallMat);
@@ -577,6 +595,8 @@ function endGame(won) {
 
 document.getElementById('startBtn').onclick = startGame;
 document.getElementById('againBtn').onclick = startGame;
+document.getElementById('qBtn').onclick = toggleQuality;
+document.getElementById('qBtn2').onclick = toggleQuality;
 document.getElementById('torchBtn').onclick = () => { if (playing) setTorch(!torchOn); };
 addEventListener('keydown', e => { if (e.key.toLowerCase() === 'f' && playing) setTorch(!torchOn); });
 
@@ -672,6 +692,87 @@ function sting(kind) {
   }
 }
 
+// ---------- Graphics: mist, dust, glow (bloom), film grain, quality ----------
+const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+let quality = isMobile ? 'low' : 'high';
+
+// Soft radial texture reused for drifting ground mist
+const mistTex = new THREE.CanvasTexture(makeCanvas(x => {
+  const g = x.createRadialGradient(128, 128, 8, 128, 128, 128);
+  g.addColorStop(0, 'rgba(150,160,185,0.55)'); g.addColorStop(1, 'rgba(150,160,185,0)');
+  x.fillStyle = g; x.fillRect(0, 0, 256, 256);
+}));
+const mistGroup = new THREE.Group(); scene.add(mistGroup);
+const mistSprites = [];
+function buildMist(n) {
+  mistSprites.forEach(s => { mistGroup.remove(s); s.material.dispose(); });
+  mistSprites.length = 0;
+  for (let i = 0; i < n; i++) {
+    const m = new THREE.Sprite(new THREE.SpriteMaterial({ map: mistTex, transparent: true,
+      opacity: 0.09 + Math.random() * 0.07, depthWrite: false, color: 0x7a828f }));
+    const sc = 9 + Math.random() * 11; m.scale.set(sc, sc * 0.6, 1);
+    m.position.set(Math.random() * 72 - 36, 0.5 + Math.random() * 0.9, Math.random() * 72 - 36);
+    m.userData = { sp: 0.12 + Math.random() * 0.22 };
+    mistGroup.add(m); mistSprites.push(m);
+  }
+}
+
+// Dust motes floating in the air (catch the eye near the flashlight)
+const DUST = 130;
+const dustGeo = new THREE.BufferGeometry();
+const dustArr = new Float32Array(DUST * 3);
+for (let i = 0; i < DUST; i++) { dustArr[i*3] = Math.random()*64-32; dustArr[i*3+1] = Math.random()*4.5; dustArr[i*3+2] = Math.random()*64-32; }
+dustGeo.setAttribute('position', new THREE.Float32BufferAttribute(dustArr, 3));
+const dust = new THREE.Points(dustGeo, new THREE.PointsMaterial({ color: 0xc4ccdd, size: 0.05, transparent: true, opacity: 0.5, depthWrite: false }));
+scene.add(dust);
+
+// Film grain + vignette, applied as a final full-screen pass
+const GrainVignetteShader = {
+  uniforms: { tDiffuse: { value: null }, time: { value: 0 }, amount: { value: 0.035 } },
+  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+  fragmentShader: [
+    'uniform sampler2D tDiffuse; uniform float time; uniform float amount; varying vec2 vUv;',
+    'float rand(vec2 c){ return fract(sin(dot(c, vec2(12.9898,78.233))) * 43758.5453); }',
+    'void main(){',
+    '  vec4 col = texture2D(tDiffuse, vUv);',
+    '  float n = rand(vUv + fract(time)) - 0.5;',
+    '  col.rgb += n * amount;',
+    '  float d = distance(vUv, vec2(0.5));',
+    '  col.rgb *= 0.62 + 0.38 * smoothstep(1.2, 0.2, d);',
+    '  col.rgb = pow(max(col.rgb, 0.0), vec3(0.4545));',  // linear -> sRGB (composer path)
+    '  gl_FragColor = col;',
+    '}'
+  ].join('\n')
+};
+
+function setupPost() {
+  if (!THREE.EffectComposer || !THREE.RenderPass || !THREE.ShaderPass || !THREE.UnrealBloomPass) { composer = null; return; }
+  composer = new THREE.EffectComposer(renderer);
+  composer.setSize(innerWidth, innerHeight);
+  composer.addPass(new THREE.RenderPass(scene, camera));
+  bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.85, 0.6, 0.6);
+  composer.addPass(bloomPass);
+  grainPass = new THREE.ShaderPass(GrainVignetteShader);
+  grainPass.renderToScreen = true;
+  composer.addPass(grainPass);
+}
+
+function applyQuality() {
+  const high = quality === 'high';
+  renderer.setPixelRatio(Math.min(devicePixelRatio, high ? 2 : 1.25));
+  moonLight.shadow.mapSize.set(high ? 2048 : 1024, high ? 2048 : 1024);
+  if (moonLight.shadow.map) { moonLight.shadow.map.dispose(); moonLight.shadow.map = null; }
+  flashlight.shadow.mapSize.set(high ? 1024 : 512, high ? 1024 : 512);
+  if (flashlight.shadow.map) { flashlight.shadow.map.dispose(); flashlight.shadow.map = null; }
+  buildMist(high ? 26 : 9);
+  dust.visible = high;
+  if (high && !composer) setupPost();
+  document.querySelectorAll('.qbtn').forEach(b => b.textContent = '✨ Graphics: ' + (high ? 'High' : 'Low'));
+  resize();
+}
+function toggleQuality() { quality = quality === 'high' ? 'low' : 'high'; applyQuality(); say('Graphics: ' + (quality === 'high' ? 'High' : 'Low')); }
+addEventListener('keydown', e => { if (e.key.toLowerCase() === 'g') toggleQuality(); });
+
 // ---------- Main loop ----------
 // Organic flicker: mostly steady near 1, with occasional unsettling dips.
 function flick(t, s) {
@@ -706,6 +807,11 @@ function animate() {
     if (o.mat) o.mat.emissiveIntensity = o.matBase * (0.45 + v * 0.55);
   });
   litGlassMat.emissiveIntensity = 1.6 * flick(t, 7.7);
+
+  // Drifting mist and floating dust
+  mistSprites.forEach(m => { m.position.x += m.userData.sp * dt; if (m.position.x > 38) m.position.x = -38; });
+  dust.rotation.y += dt * 0.015;
+  dust.position.y = Math.sin(t * 0.3) * 0.25;
 
   if (playing) {
     let fwd = 0, side = 0;
@@ -825,8 +931,10 @@ function animate() {
   );
   flashlight.target.position.copy(camera.position).add(dir.multiplyScalar(10));
 
-  renderer.render(scene, camera);
+  if (composer && quality === 'high') { grainPass.uniforms.time.value = t % 1; composer.render(); }
+  else renderer.render(scene, camera);
 }
+applyQuality();
 animate();
 </script>
 </body>

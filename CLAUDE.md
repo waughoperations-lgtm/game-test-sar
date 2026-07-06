@@ -18,8 +18,10 @@ When working with them:
 
 ## Project structure
 - `index.html` — the ENTIRE single-player game in one file (HTML + CSS + JavaScript).
-  It loads the Three.js 3D library (version r128) from a CDN, so an internet
-  connection is needed the first time it loads.
+  It loads the Three.js 3D library (version r128) from a CDN, plus a few Three.js
+  post-processing add-ons (EffectComposer/UnrealBloomPass/etc.) for the "High" graphics
+  mode. An internet connection is needed the first time it loads. If the add-ons fail to
+  load, the game still runs — it just falls back to plain rendering.
 - `multiplayer.html` — an online multiplayer version (separate file, single-player
   is untouched). Friends join a room by code; one player is randomly the monster and
   hunts the others; hiders survive 2 minutes to win. Networking is peer-to-peer over
@@ -49,6 +51,11 @@ When working with them:
    - Procedural sound via the Web Audio API (`initAudio`, `setGrowl`, `thump`,
      `footstep`, `sting`) — a growl + heartbeat that rise with danger, footsteps,
      and chase/caught/win stings. All generated in code, so NO sound files are needed.
+   - Graphics: drifting ground mist (sprites), floating dust motes, and post-processing
+     (`setupPost`) — bloom "glow", plus a film-grain + vignette shader pass. A Low/High
+     quality toggle (`applyQuality`/`toggleQuality`, the ✨ Graphics button or the `g` key)
+     controls bloom, mist amount, shadow resolution and pixel ratio; defaults to Low on
+     phones. Bump maps on the ground and walls add surface relief.
    - The monster's "brain" (wander vs. chase) lives inside the main `animate()` loop
    - Main `animate()` loop
 
