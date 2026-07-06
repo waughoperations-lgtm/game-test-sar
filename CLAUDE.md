@@ -46,6 +46,9 @@ When working with them:
      F key or 🔦 button toggles the flashlight)
    - Collision detection (`wallBoxes` rectangles and `circles`)
    - Game state: `startGame()`, `endGame()`, timer, danger meter
+   - Procedural sound via the Web Audio API (`initAudio`, `setGrowl`, `thump`,
+     `footstep`, `sting`) — a growl + heartbeat that rise with danger, footsteps,
+     and chase/caught/win stings. All generated in code, so NO sound files are needed.
    - The monster's "brain" (wander vs. chase) lives inside the main `animate()` loop
    - Main `animate()` loop
 

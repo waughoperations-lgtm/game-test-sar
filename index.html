@@ -546,6 +546,7 @@ function setTorch(on) {
 }
 
 function startGame() {
+  initAudio(); setGrowl(0);
   player.x = 0; player.z = 26; player.yaw = 0; player.pitch = 0;
   timeLeft = 120;
   const sp = monsterSpawn();
@@ -563,6 +564,7 @@ function startGame() {
 
 function endGame(won) {
   playing = false;
+  setGrowl(0); sting(won ? 'win' : 'caught');
   document.getElementById('vignette').style.opacity = 0;
   document.getElementById('endEmoji').textContent = won ? '🌅' : '👹';
   document.getElementById('endTitle').textContent = won ? 'You survived!' : 'The monster got you!';
@@ -581,6 +583,94 @@ const meterFill = document.getElementById('meterFill');
 const meterLabel = document.getElementById('meterLabel');
 const timerEl = document.getElementById('timer');
 
+// ---------- Sound (generated in code — no sound files needed) ----------
+// Browsers only allow sound after a click, so we set this up when Start is pressed.
+let actx = null, sound = {};
+function initAudio() {
+  if (actx) { if (actx.state === 'suspended') actx.resume(); return; }
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return;
+  try { actx = new AC(); } catch (e) { return; }
+  const master = actx.createGain(); master.gain.value = 0.9; master.connect(actx.destination);
+
+  // A loop of white noise we reuse for the growl texture and footsteps
+  const nb = actx.createBuffer(1, actx.sampleRate * 2, actx.sampleRate);
+  const nd = nb.getChannelData(0);
+  for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+
+  // Continuous low growl whose volume/pitch we push up as danger rises
+  const growlGain = actx.createGain(); growlGain.gain.value = 0.0001; growlGain.connect(master);
+  const lp = actx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 220; lp.connect(growlGain);
+  const o1 = actx.createOscillator(); o1.type = 'sawtooth'; o1.frequency.value = 55;
+  const o2 = actx.createOscillator(); o2.type = 'sawtooth'; o2.frequency.value = 82; o2.detune.value = -6;
+  o1.connect(lp); o2.connect(lp);
+  const gn = actx.createBufferSource(); gn.buffer = nb; gn.loop = true;
+  const gnbp = actx.createBiquadFilter(); gnbp.type = 'bandpass'; gnbp.frequency.value = 140; gnbp.Q.value = 1.8;
+  const gnGain = actx.createGain(); gnGain.gain.value = 0.45;
+  gn.connect(gnbp); gnbp.connect(gnGain); gnGain.connect(lp);
+  const lfo = actx.createOscillator(); lfo.frequency.value = 5.5;
+  const lfoGain = actx.createGain(); lfoGain.gain.value = 55;
+  lfo.connect(lfoGain); lfoGain.connect(lp.frequency);
+  o1.start(); o2.start(); gn.start(); lfo.start();
+
+  sound = { master, nb, growlGain, growlFilter: lp, growlOscs: [o1, o2] };
+}
+function setGrowl(danger) {
+  if (!actx || !sound.growlGain) return;
+  const now = actx.currentTime;
+  sound.growlGain.gain.setTargetAtTime(Math.max(0.0001, danger * danger * 0.55), now, 0.15);
+  sound.growlFilter.frequency.setTargetAtTime(150 + danger * 420, now, 0.2);
+  const p = 50 + danger * 34;
+  sound.growlOscs[0].frequency.setTargetAtTime(p, now, 0.2);
+  sound.growlOscs[1].frequency.setTargetAtTime(p * 1.5, now, 0.2);
+}
+function thump(vol) {
+  if (!actx) return;
+  const t = actx.currentTime;
+  const o = actx.createOscillator(); o.type = 'sine';
+  o.frequency.setValueAtTime(85, t); o.frequency.exponentialRampToValueAtTime(34, t + 0.18);
+  const g = actx.createGain();
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.34);
+  o.connect(g); g.connect(sound.master); o.start(t); o.stop(t + 0.4);
+}
+function footstep() {
+  if (!actx) return;
+  const t = actx.currentTime;
+  const src = actx.createBufferSource(); src.buffer = sound.nb;
+  const bp = actx.createBiquadFilter(); bp.type = 'lowpass'; bp.frequency.value = 850;
+  const g = actx.createGain(); g.gain.setValueAtTime(0.22, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+  src.connect(bp); bp.connect(g); g.connect(sound.master);
+  src.start(t, Math.random() * 1.5, 0.12);
+}
+function sting(kind) {
+  if (!actx) return;
+  const t = actx.currentTime, dst = sound.master;
+  if (kind === 'chase') {
+    const o = actx.createOscillator(); o.type = 'sawtooth';
+    o.frequency.setValueAtTime(200, t); o.frequency.exponentialRampToValueAtTime(900, t + 0.25);
+    const g = actx.createGain();
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.32, t + 0.05); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.5);
+    o.connect(g); g.connect(dst); o.start(t); o.stop(t + 0.5);
+  } else if (kind === 'caught') {
+    [330, 349, 494].forEach(f => {
+      const o = actx.createOscillator(); o.type = 'square'; o.frequency.value = f;
+      const g = actx.createGain(); g.gain.setValueAtTime(0.2, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.6);
+      o.connect(g); g.connect(dst); o.start(t); o.stop(t + 0.6);
+    });
+    const o2 = actx.createOscillator(); o2.type = 'sawtooth';
+    o2.frequency.setValueAtTime(400, t); o2.frequency.exponentialRampToValueAtTime(55, t + 0.7);
+    const g2 = actx.createGain(); g2.gain.setValueAtTime(0.3, t); g2.gain.exponentialRampToValueAtTime(0.0001, t + 0.8);
+    o2.connect(g2); g2.connect(dst); o2.start(t); o2.stop(t + 0.85);
+  } else if (kind === 'win') {
+    [523, 659, 784, 1047].forEach((f, i) => {
+      const tt = t + i * 0.13;
+      const o = actx.createOscillator(); o.type = 'triangle'; o.frequency.value = f;
+      const g = actx.createGain(); g.gain.setValueAtTime(0.0001, tt); g.gain.exponentialRampToValueAtTime(0.24, tt + 0.03); g.gain.exponentialRampToValueAtTime(0.0001, tt + 0.5);
+      o.connect(g); g.connect(dst); o.start(tt); o.stop(tt + 0.5);
+    });
+  }
+}
+
 // ---------- Main loop ----------
 // Organic flicker: mostly steady near 1, with occasional unsettling dips.
 function flick(t, s) {
@@ -590,6 +680,7 @@ function flick(t, s) {
 }
 
 const clock = new THREE.Clock();
+let heartAccum = 0, stepAccum = 0;
 function animate() {
   requestAnimationFrame(animate);
   const dt = Math.min(clock.getDelta(), 0.05);
@@ -631,6 +722,8 @@ function animate() {
       const dz = (-c * fwd - s * side) * player.speed * dt;
       if (!collides(player.x + dx, player.z)) player.x += dx;
       if (!collides(player.x, player.z + dz)) player.z += dz;
+      stepAccum += player.speed * dt;
+      if (stepAccum > 0.55) { stepAccum = 0; footstep(); }
     }
 
     timeLeft -= dt;
@@ -645,7 +738,7 @@ function animate() {
     const senses = (dToPlayer < sightRange && los) || dToPlayer < 4.5;  // it can hear you up close
 
     if (senses) {
-      if (monster.state !== 'chase') say('It spotted you — RUN!');
+      if (monster.state !== 'chase') { say('It spotted you — RUN!'); sting('chase'); }
       monster.state = 'chase';
       monster.targetX = player.x; monster.targetZ = player.z; monster.lostTimer = 0;
     } else if (monster.state === 'chase') {
@@ -698,6 +791,11 @@ function animate() {
                           : 'You are hidden';
     document.getElementById('vignette').style.opacity =
       monster.state === 'chase' ? Math.min(0.9, 0.4 + pct * 0.5) : Math.max(0, (pct - 0.6) * 1.4);
+
+    // Growl swells and heartbeat quickens as the monster closes in
+    setGrowl(pct);
+    heartAccum -= dt;
+    if (pct > 0.2 && heartAccum <= 0) { thump(0.14 + pct * 0.5); heartAccum = 1.2 - pct * 0.85; }
 
     // Point the monster where it is going, glare red while hunting
     const faceX = (monster.state === 'chase' ? player.x : monster.targetX) - monster.x;
