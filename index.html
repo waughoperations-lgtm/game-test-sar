@@ -433,6 +433,7 @@ function makeMonster() {
   scene.add(monsterGroup);
 }
 makeMonster();
+monsterGroup.scale.setScalar(2.3);   // a huge, towering monster
 
 // Line-of-sight: can point A see point B, or do buildings/bushes block the view?
 function hasLineOfSight(ax, az, bx, bz) {
@@ -763,8 +764,8 @@ function animate() {
     const mlen = Math.hypot(mdx, mdz) || 1;
     mdx = mdx / mlen * spd; mdz = mdz / mlen * spd;
     const beforeX = monster.x, beforeZ = monster.z;
-    if (!collides(monster.x + mdx, monster.z, 0.9)) monster.x += mdx;
-    if (!collides(monster.x, monster.z + mdz, 0.9)) monster.z += mdz;
+    if (!collides(monster.x + mdx, monster.z, 1.3)) monster.x += mdx;
+    if (!collides(monster.x, monster.z + mdz, 1.3)) monster.z += mdz;
     // If it wandered into a corner and got stuck, pick a fresh spot
     if (monster.state === 'wander' &&
         Math.hypot(monster.x - beforeX, monster.z - beforeZ) < spd * 0.3) {
@@ -776,11 +777,11 @@ function animate() {
       }
     } else monster.stuck = 0;
 
-    // Caught!
-    if (dToPlayer < 1.7) { endGame(false); }
+    // Caught! (the giant monster grabs from further away)
+    if (dToPlayer < 2.7) { endGame(false); }
 
     // --- Danger meter + red screen glow ---
-    let pct = Math.max(0, Math.min(1, 1 - (dToPlayer - 1.5) / 18));
+    let pct = Math.max(0, Math.min(1, 1 - (dToPlayer - 2.5) / 18));
     if (monster.state === 'chase') pct = Math.min(1, pct + 0.18);
     meterFill.style.width = (pct * 100) + '%';
     meterFill.style.background = pct > 0.8 ? '#e24b4a' : pct > 0.55 ? '#ef9f27' : pct > 0.3 ? '#f2c14e' : '#4f9dde';
@@ -809,7 +810,7 @@ function animate() {
     if (monEyeGlow) monEyeGlow.intensity = (hunting ? 1.6 : 1.0) * (0.7 + pulse * 0.5);
   }
 
-  camera.position.set(player.x, 1.6, player.z);
+  camera.position.set(player.x, 0.95, player.z);   // you are a small "mini person"
   camera.rotation.order = 'YXZ';
   camera.rotation.y = player.yaw;
   camera.rotation.x = player.pitch;

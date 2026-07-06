@@ -439,6 +439,7 @@ function makeHiderAvatar(color) {
   armL.position.set(-0.44, 0.6, 0); armL.rotation.z = 0.7;
   const armR = armL.clone(); armR.position.x = 0.44; armR.rotation.z = -0.7;
   g.add(body, head, cap, eyeL, eyeR, armL, armR);
+  g.scale.setScalar(0.62);   // little "mini people"
   return g;
 }
 function makeMonsterAvatar() {
@@ -475,6 +476,7 @@ function makeMonsterAvatar() {
   armL.position.set(-1.05, 1.15, 0.2); armL.rotation.z = 0.6;
   const armR = armL.clone(); armR.position.x = 1.05; armR.rotation.z = -0.6;
   g.add(body, hornL, hornR, eyeL, eyeR, pupL, pupR, glow, armL, armR);
+  g.scale.setScalar(2.3);   // a huge, towering monster
   return g;
 }
 function setGhost(group, on) {
@@ -483,6 +485,7 @@ function setGhost(group, on) {
 
 // ---------- Local player + controls ----------
 const player = { x: 0, z: 26, yaw: 0, pitch: 0, speed: 6.5 };
+let eyeHeight = 1.6;   // camera height — low for tiny hiders, tall for the giant monster
 const keys = {};
 addEventListener('keydown', e => keys[e.key.toLowerCase()] = true);
 addEventListener('keyup',   e => keys[e.key.toLowerCase()] = false);
@@ -578,7 +581,7 @@ addEventListener('keydown', e => { if (e.key.toLowerCase() === 'f' && phase === 
 //  MULTIPLAYER
 // =====================================================================
 const ROUND_MS = 120000;
-const HIDER_SPEED = 6.5, MONSTER_SPEED = 7.4, CATCH_DIST = 1.7;
+const HIDER_SPEED = 6.5, MONSTER_SPEED = 7.4, CATCH_DIST = 2.7;
 const COLORS = [0xe4538a, 0x5a67d8, 0x1d9e75, 0xe0a030, 0x35b5c9, 0xb060d0, 0xd94f4f, 0x7bbf3a];
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const PEER_PREFIX = 'hidemon2-';
@@ -769,6 +772,7 @@ function beginRoundLocal() {
   localAlive = me ? me.alive : false;
   if (me) { player.x = me.x; player.z = me.z; player.yaw = me.yaw; player.pitch = 0; }
   player.speed = (myRole === 'monster') ? MONSTER_SPEED : HIDER_SPEED;
+  eyeHeight = myRole === 'monster' ? 3.0 : (myRole === 'spectator' ? 1.6 : 0.95);
   flashlight.color.setHex(myRole === 'monster' ? 0xff6a4a : 0xfff1cf);
   setTorch(true);
   phase = 'playing';
@@ -956,7 +960,7 @@ function animate() {
     updateHud();
   }
 
-  camera.position.set(player.x, 1.6, player.z);
+  camera.position.set(player.x, eyeHeight, player.z);
   camera.rotation.order = 'YXZ';
   camera.rotation.y = player.yaw;
   camera.rotation.x = player.pitch;
