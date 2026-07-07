@@ -39,6 +39,9 @@ When working with them:
   hangout (table, seats, name tags, voice); the tile hand + played board are a 2D
   overlay. Dominoes engine + host validation: `fullSet`/`startRound`/`hostTryPlay`/
   `hostTryDraw`/`hostTryPass`/`finishRound`. Mic needs the browser's permission prompt.
+  A "Practice vs computer" button (`practiceBtn`) starts a solo game against simple
+  bots (`botAct`/`scheduleBots`) — no second player, no mic, no internet needed. The
+  host re-renders its own hand/board via `renderGame()` inside `sendGameState`.
 
 ## How the code is organized (all inside index.html)
 1. CSS styles for the on-screen displays (timer, found counter, giggle meter, menus)

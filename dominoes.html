@@ -103,6 +103,8 @@
       <div class="divider2">or join a friend</div>
       <input id="codeInput" maxlength="4" placeholder="Room code" style="text-transform:uppercase; letter-spacing:4px;">
       <button class="btn blue" id="joinBtn">Join table</button>
+      <div class="divider2">or try it on your own</div>
+      <button class="btn grey" id="practiceBtn">Practice vs computer</button>
       <div class="err" id="menuErr"></div>
     </div>
     <div id="lobbyView" class="hidden">
@@ -497,6 +499,8 @@ function personalView(id) {
 function sendGameState() {
   roster = rosterArr();   // keep the host's own roster in sync for the HUD/seating
   players.forEach(p => { if (p.id === myId) { view = personalView(myId); } else { const c = conns.find(cn => cn.peer === p.id); if (c) c.send(personalView(p.id)); } });
+  if (phase === 'playing') renderGame();   // refresh the host's own hand/board too
+  scheduleBots();   // let any computer players take their turn
 }
 
 // ----- Host move validation -----
@@ -542,6 +546,40 @@ function hostTryPass(id) {
   }
   sendGameState();
 }
+// ----- Practice mode: play solo against simple computer players -----
+let botTimer = null;
+document.getElementById('practiceBtn').onclick = () => {
+  myName = (nameInput.value.trim() || 'You').slice(0, 12);
+  isHost = true; myId = 'local-you'; roomCode = 'SOLO';
+  players.clear();
+  players.set(myId, { id: myId, name: myName, color: COLORS[0], seat: 0 });
+  players.set('bot1', { id: 'bot1', name: 'Bella 🤖', color: COLORS[1], seat: 1, bot: true });
+  players.set('bot2', { id: 'bot2', name: 'Max 🤖', color: COLORS[2], seat: 2, bot: true });
+  phase = 'lobby';
+  startRound();
+};
+function scheduleBots() {
+  clearTimeout(botTimer);
+  if (!G || G.winner) return;
+  const cur = currentId(); const p = players.get(cur);
+  if (p && p.bot) botTimer = setTimeout(botAct, 850);
+}
+function botAct() {
+  if (!G || G.winner) return;
+  const id = currentId(); const p = players.get(id);
+  if (!p || !p.bot) return;
+  const hand = G.hands[id]; const boardEmpty = G.board.length === 0;
+  let move = null;
+  for (const t of hand) {
+    if (boardEmpty) { move = { tile: t, side: 'R' }; break; }
+    if (t[0] === G.rightEnd || t[1] === G.rightEnd) { move = { tile: t, side: 'R' }; break; }
+    if (t[0] === G.leftEnd || t[1] === G.leftEnd) { move = { tile: t, side: 'L' }; break; }
+  }
+  if (move) hostTryPlay(id, move.tile, move.side);
+  else if (G.boneyard.length > 0) hostTryDraw(id);
+  else hostTryPass(id);
+}
+
 function finishRound(winId, reason) {
   G.winner = winId;
   const name = players.get(winId) ? players.get(winId).name : 'Someone';
