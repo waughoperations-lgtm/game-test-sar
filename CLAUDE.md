@@ -42,6 +42,11 @@ When working with them:
   A "Practice vs computer" button (`practiceBtn`) starts a solo game against simple
   bots (`botAct`/`scheduleBots`) — no second player, no mic, no internet needed. The
   host re-renders its own hand/board via `renderGame()` inside `sendGameState`.
+  Played tiles also appear as real 3D dominoes on the felt (`makeTile3D`/`tileTexture`/
+  `updateBoard3D`, `boardTiles3D` map) and animate dropping in with a wooden "clack"
+  (`playClack`). The night scene is alive: drifting clouds, fireflies, flickering
+  house/table lights (`flickerLights`/`flick`), a swaying hanging lamp, and seated
+  players that idly breathe — all driven in the `animate()` loop.
 
 ## How the code is organized (all inside index.html)
 1. CSS styles for the on-screen displays (timer, found counter, giggle meter, menus)
