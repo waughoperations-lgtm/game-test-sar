@@ -186,6 +186,42 @@ const woodTex = new THREE.CanvasTexture(makeCanvas(x => {
     x.lineWidth = 1 + Math.random() * 2; x.beginPath(); x.moveTo(0, i * 4.5 + Math.random()*3); x.bezierCurveTo(80, i*4.5+Math.random()*6, 170, i*4.5-Math.random()*6, 256, i*4.5+Math.random()*3); x.stroke(); }
 }));
 
+// Realism: crisp textures + normal maps derived from the noise, and a night-sky
+// environment map so surfaces pick up believable ambient reflection.
+const MAXANISO = renderer.capabilities.getMaxAnisotropy();
+grassTex.anisotropy = MAXANISO;
+function normalFromCanvas(cv, strength) {
+  const w = cv.width, h = cv.height;
+  const src = cv.getContext('2d').getImageData(0, 0, w, h).data;
+  const out = document.createElement('canvas'); out.width = w; out.height = h;
+  const octx = out.getContext('2d'); const dst = octx.createImageData(w, h);
+  const lum = (x, y) => { x = (x + w) % w; y = (y + h) % h; const i = (y * w + x) * 4; return (src[i] * 0.299 + src[i + 1] * 0.587 + src[i + 2] * 0.114) / 255; };
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const dx = (lum(x - 1, y) - lum(x + 1, y)) * strength;
+    const dy = (lum(x, y - 1) - lum(x, y + 1)) * strength;
+    const nz = 1, l = Math.hypot(dx, dy, nz), i = (y * w + x) * 4;
+    dst.data[i] = (dx / l * 0.5 + 0.5) * 255; dst.data[i + 1] = (dy / l * 0.5 + 0.5) * 255; dst.data[i + 2] = (nz / l * 0.5 + 0.5) * 255; dst.data[i + 3] = 255;
+  }
+  octx.putImageData(dst, 0, 0);
+  const t = new THREE.CanvasTexture(out); t.wrapS = t.wrapT = THREE.RepeatWrapping; return t;
+}
+const grassNormal = normalFromCanvas(grassTex.image, 2.4); grassNormal.repeat.copy(grassTex.repeat); grassNormal.anisotropy = MAXANISO;
+const plasterNormal = normalFromCanvas(plasterTex.image, 1.6);
+const woodNormal = normalFromCanvas(woodTex.image, 1.8);
+(function setupEnv() {
+  const c = document.createElement('canvas'); c.width = 512; c.height = 256; const x = c.getContext('2d');
+  const g = x.createLinearGradient(0, 0, 0, 256);
+  g.addColorStop(0, '#080d1e'); g.addColorStop(0.55, '#0c1226'); g.addColorStop(1, '#0a0f0a');
+  x.fillStyle = g; x.fillRect(0, 0, 512, 256);
+  const mg = x.createRadialGradient(120, 55, 4, 120, 55, 80);
+  mg.addColorStop(0, 'rgba(150,160,190,0.45)'); mg.addColorStop(1, 'rgba(150,160,190,0)');
+  x.fillStyle = mg; x.fillRect(0, 0, 512, 256);
+  const tex = new THREE.CanvasTexture(c); tex.mapping = THREE.EquirectangularReflectionMapping;
+  try { const pmrem = new THREE.PMREMGenerator(renderer); pmrem.compileEquirectangularShader();
+    scene.environment = pmrem.fromEquirectangular(tex).texture; pmrem.dispose();
+  } catch (e) { scene.environment = tex; }
+})();
+
 // ---------- Sky + ground ----------
 const skyTex = new THREE.CanvasTexture(makeCanvas(x => {
   const g = x.createLinearGradient(0, 0, 0, 256);
@@ -202,7 +238,7 @@ const moon = new THREE.Mesh(new THREE.SphereGeometry(7, 16, 12), new THREE.MeshB
 moon.position.set(-90, 110, -70); scene.add(moon);
 
 const ground = new THREE.Mesh(new THREE.PlaneGeometry(140, 140),
-  new THREE.MeshStandardMaterial({ map: grassTex, roughness: 1 }));
+  new THREE.MeshStandardMaterial({ map: grassTex, normalMap: grassNormal, normalScale: new THREE.Vector2(0.85, 0.85), roughness: 1 }));
 ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
 
 function shadowify(m) { m.castShadow = true; m.receiveShadow = true; return m; }
@@ -221,7 +257,7 @@ function addWindow(x, y, z, rotY) {
 }
 function makeHouse(bx, bz, w, d, color, roofColor) {
   const h = 3.4, t = 0.5;
-  const wallMat = new THREE.MeshStandardMaterial({ color, map: plasterTex, roughness: 0.95 });
+  const wallMat = new THREE.MeshStandardMaterial({ color, map: plasterTex, normalMap: plasterNormal, normalScale: new THREE.Vector2(0.5, 0.5), roughness: 0.95 });
   addBox(w, h, t, bx, h / 2, bz - d / 2, wallMat); addBox(w, h, t, bx, h / 2, bz + d / 2, wallMat);
   addBox(t, h, d, bx - w / 2, h / 2, bz, wallMat); addBox(t, h, d, bx + w / 2, h / 2, bz, wallMat);
   const roof = shadowify(new THREE.Mesh(new THREE.ConeGeometry(1, 1, 4), new THREE.MeshStandardMaterial({ color: roofColor, flatShading: true, roughness: 0.9 })));
@@ -272,7 +308,7 @@ function flick(t, s) {
 // ---------- The domino table (center of the map) ----------
 const table = new THREE.Group();
 const TABLE_R = 1.7, TABLE_H = 0.92;
-const topMat = new THREE.MeshStandardMaterial({ map: woodTex, roughness: 0.6, metalness: 0.05 });
+const topMat = new THREE.MeshStandardMaterial({ map: woodTex, normalMap: woodNormal, normalScale: new THREE.Vector2(0.6, 0.6), roughness: 0.55, metalness: 0.1 });
 const tableTop = shadowify(new THREE.Mesh(new THREE.CylinderGeometry(TABLE_R, TABLE_R, 0.16, 40), topMat));
 tableTop.position.y = TABLE_H; table.add(tableTop);
 const feltMat = new THREE.MeshStandardMaterial({ color: 0x1f6b3a, roughness: 0.95 });
