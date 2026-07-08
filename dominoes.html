@@ -15,6 +15,8 @@
   #turnBox { top: 12px; left: 50%; transform: translateX(-50%); font-size: 18px; color: #ffe9b0; text-align: center; }
   #boneBox { top: 12px; right: 12px; font-size: 15px; color: #cfe0ff; }
   #micBox  { top: 12px; left: 12px; font-size: 15px; color: #9fb0d0; }
+  #viewBtn { top: 52px; right: 12px; font-size: 14px; font-family: inherit; border: none;
+             cursor: pointer; pointer-events: auto; color: #cfe0ff; }
   #message { top: 56px; left: 50%; transform: translateX(-50%); font-size: 16px; opacity: 0;
              transition: opacity .3s; max-width: 90vw; text-align: center; }
   /* Board (the played chain) */
@@ -81,6 +83,7 @@
 <div class="hud card" id="micBox">🎤 hold SPACE to talk</div>
 <div class="hud card" id="turnBox">—</div>
 <div class="hud card" id="boneBox">Boneyard: 0</div>
+<button class="hud card" id="viewBtn">🔍 Overhead view</button>
 <div class="hud card" id="message"></div>
 
 <div id="boardWrap" class="hidden"><div id="board"></div></div>
@@ -827,8 +830,8 @@ const boardTiles3D = new Map();  // key -> { mesh, tx, p, slot }
 function keyOf(t) { return Math.min(t[0], t[1]) + '-' + Math.max(t[0], t[1]); }
 function updateBoard3D(board) {
   const n = board.length;
-  const feltW = (TABLE_R - 0.32) * 2;
-  const slot = n ? Math.min(0.5, feltW / n) : 0.5;
+  const feltW = (TABLE_R - 0.35) * 2;
+  const slot = n ? Math.min(0.38, feltW / n) : 0.38;
   const present = new Set();
   board.forEach((t, i) => {
     const key = keyOf(t); present.add(key);
@@ -836,7 +839,7 @@ function updateBoard3D(board) {
     let e = boardTiles3D.get(key);
     if (!e) {
       const mesh = makeTile3D(t[0], t[1]);
-      const s = slot / 0.5 * 0.9; mesh.scale.setScalar(s);
+      const s = slot * 0.92; mesh.scale.setScalar(s);
       mesh.position.set(x, TABLE_H + 1.6, 0);
       scene.add(mesh);
       e = { mesh, tx: x, p: 0, slot }; boardTiles3D.set(key, e);
@@ -891,17 +894,31 @@ function animate() {
     e.mesh.position.z += (0 - e.mesh.position.z) * k;
     e.mesh.position.y = ty + (1 - ease) * 1.5;
     e.mesh.rotation.z = (1 - ease) * 0.5;
-    const s = e.slot / 0.5 * 0.9;
+    const s = e.slot * 0.92;
     const cur = e.mesh.scale.x + (s - e.mesh.scale.x) * k;
     e.mesh.scale.setScalar(cur);
   });
 
-  // Camera sits at my seat, looking at the table
-  const pos = seatPos(mySeat, seatCount);
-  camera.position.set(pos.x * 1.02, 1.55, pos.z * 1.02);
-  camera.lookAt(0, 0.75, 0);
+  // Camera: seated first-person, or a top-down overhead view of the board
+  // hide the hanging lamp when looking straight down so it doesn't block the board
+  lampShade.visible = lampBulb.visible = lampCord.visible = !topView;
+  if (topView) {
+    camera.up.set(0, 0, -1);
+    camera.position.set(0, 5.0, 0.0001);
+    camera.lookAt(0, 0.9, 0);
+  } else {
+    camera.up.set(0, 1, 0);
+    const pos = seatPos(mySeat, seatCount);
+    camera.position.set(pos.x * 1.02, 1.55, pos.z * 1.02);
+    camera.lookAt(0, 0.75, 0);
+  }
   renderer.render(scene, camera);
 }
+let topView = false;
+const viewBtn = document.getElementById('viewBtn');
+function setViewBtn() { viewBtn.textContent = topView ? '🔍 Seat view' : '🔍 Overhead view'; }
+viewBtn.onclick = () => { topView = !topView; setViewBtn(); };
+addEventListener('keydown', e => { if (e.key.toLowerCase() === 'v') { topView = !topView; setViewBtn(); } });
 buildSeats();
 animate();
 </script>

@@ -46,7 +46,10 @@ When working with them:
   `updateBoard3D`, `boardTiles3D` map) and animate dropping in with a wooden "clack"
   (`playClack`). The night scene is alive: drifting clouds, fireflies, flickering
   house/table lights (`flickerLights`/`flick`), a swaying hanging lamp, and seated
-  players that idly breathe — all driven in the `animate()` loop.
+  players that idly breathe — all driven in the `animate()` loop. Tiles are sized to
+  fit the felt (`updateBoard3D` slot/scale). A 🔍 Overhead-view toggle (`viewBtn`, or
+  the `V` key, `topView`) switches between the seated first-person camera and a
+  top-down view of the board; the hanging lamp is hidden while overhead.
 
 ## How the code is organized (all inside index.html)
 1. CSS styles for the on-screen displays (timer, found counter, giggle meter, menus)
