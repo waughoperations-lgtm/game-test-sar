@@ -177,6 +177,29 @@ const dirtTex = new THREE.CanvasTexture(makeCanvas(x => {
 }));
 dirtTex.wrapS = dirtTex.wrapT = THREE.RepeatWrapping;
 
+// Crisp textures at glancing angles
+const MAXANISO = renderer.capabilities.getMaxAnisotropy();
+[grassTex, dirtTex].forEach(t => t.anisotropy = MAXANISO);
+
+// Derive normal maps from the noise so the ground/walls catch light with real surface relief
+function normalFromCanvas(cv, strength) {
+  const w = cv.width, h = cv.height;
+  const src = cv.getContext('2d').getImageData(0, 0, w, h).data;
+  const out = document.createElement('canvas'); out.width = w; out.height = h;
+  const octx = out.getContext('2d'); const dst = octx.createImageData(w, h);
+  const lum = (x, y) => { x = (x + w) % w; y = (y + h) % h; const i = (y * w + x) * 4; return (src[i] * 0.299 + src[i + 1] * 0.587 + src[i + 2] * 0.114) / 255; };
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const dx = (lum(x - 1, y) - lum(x + 1, y)) * strength;
+    const dy = (lum(x, y - 1) - lum(x, y + 1)) * strength;
+    const nz = 1, l = Math.hypot(dx, dy, nz), i = (y * w + x) * 4;
+    dst.data[i] = (dx / l * 0.5 + 0.5) * 255; dst.data[i + 1] = (dy / l * 0.5 + 0.5) * 255; dst.data[i + 2] = (nz / l * 0.5 + 0.5) * 255; dst.data[i + 3] = 255;
+  }
+  octx.putImageData(dst, 0, 0);
+  const t = new THREE.CanvasTexture(out); t.wrapS = t.wrapT = THREE.RepeatWrapping; return t;
+}
+const grassNormal = normalFromCanvas(grassTex.image, 2.4); grassNormal.repeat.copy(grassTex.repeat); grassNormal.anisotropy = MAXANISO;
+const plasterNormal = normalFromCanvas(plasterTex.image, 1.6);
+
 // ---------- Night sky, moon and stars ----------
 const skyTex = new THREE.CanvasTexture(makeCanvas(x => {
   const g = x.createLinearGradient(0, 0, 0, 256);
@@ -226,7 +249,7 @@ for (let i = 0; i < 5; i++) {
 
 // ---------- Ground + paths ----------
 const ground = new THREE.Mesh(new THREE.PlaneGeometry(140, 140),
-  new THREE.MeshStandardMaterial({ map: grassTex, bumpMap: grassTex, bumpScale: 0.09, roughness: 1, metalness: 0 }));
+  new THREE.MeshStandardMaterial({ map: grassTex, normalMap: grassNormal, normalScale: new THREE.Vector2(0.85, 0.85), roughness: 1, metalness: 0 }));
 ground.rotation.x = -Math.PI / 2;
 ground.receiveShadow = true;
 scene.add(ground);
@@ -260,7 +283,7 @@ function addBox(w, h, d, x, y, z, mat, solid) {
 // ---------- Houses with glowing windows ----------
 const whiteMat = new THREE.MeshStandardMaterial({ color: 0xe8e2d4, roughness: 0.9 });
 const litGlassMat = new THREE.MeshStandardMaterial({
-  color: 0x3a2c10, emissive: 0xffb54d, emissiveIntensity: 1.6, roughness: 0.4
+  color: 0x3a2c10, emissive: 0xffb54d, emissiveIntensity: 1.25, roughness: 0.4
 });
 const buildings = [];
 
@@ -280,7 +303,7 @@ function addWindow(x, y, z, rotY) {
 
 function makeHouse(bx, bz, w, d, color, roofColor, chimney) {
   const h = 3.4, t = 0.5, dw = 2.6, sw = (w - dw) / 2;
-  const wallMat = new THREE.MeshStandardMaterial({ color, map: plasterTex, bumpMap: plasterTex, bumpScale: 0.05, roughness: 0.95 });
+  const wallMat = new THREE.MeshStandardMaterial({ color, map: plasterTex, normalMap: plasterNormal, normalScale: new THREE.Vector2(0.5, 0.5), roughness: 0.95 });
   addBox(w, h, t, bx, h / 2, bz - d / 2, wallMat);
   addBox(t, h, d, bx - w / 2, h / 2, bz, wallMat);
   addBox(t, h, d, bx + w / 2, h / 2, bz, wallMat);
@@ -707,6 +730,23 @@ function sting(kind) {
 const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 let quality = isMobile ? 'low' : 'high';
 
+// Environment map: a procedural night-sky so every surface picks up realistic
+// ambient light/reflection instead of looking flat and plastic.
+(function setupEnv() {
+  const c = document.createElement('canvas'); c.width = 512; c.height = 256; const x = c.getContext('2d');
+  const g = x.createLinearGradient(0, 0, 0, 256);
+  g.addColorStop(0, '#05060f'); g.addColorStop(0.5, '#0a0810'); g.addColorStop(0.63, '#1a0a0a'); g.addColorStop(1, '#050604');
+  x.fillStyle = g; x.fillRect(0, 0, 512, 256);
+  const mg = x.createRadialGradient(120, 58, 4, 120, 58, 80);
+  mg.addColorStop(0, 'rgba(150,65,50,0.4)'); mg.addColorStop(1, 'rgba(150,65,50,0)');
+  x.fillStyle = mg; x.fillRect(0, 0, 512, 256);
+  const tex = new THREE.CanvasTexture(c); tex.mapping = THREE.EquirectangularReflectionMapping;
+  try {
+    const pmrem = new THREE.PMREMGenerator(renderer); pmrem.compileEquirectangularShader();
+    scene.environment = pmrem.fromEquirectangular(tex).texture; pmrem.dispose();
+  } catch (e) { scene.environment = tex; }
+})();
+
 // Soft radial texture reused for drifting ground mist
 const mistTex = new THREE.CanvasTexture(makeCanvas(x => {
   const g = x.createRadialGradient(128, 128, 8, 128, 128, 128);
@@ -761,7 +801,7 @@ function setupPost() {
   composer = new THREE.EffectComposer(renderer);
   composer.setSize(innerWidth, innerHeight);
   composer.addPass(new THREE.RenderPass(scene, camera));
-  bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.85, 0.6, 0.6);
+  bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.62, 0.5, 0.72);
   composer.addPass(bloomPass);
   grainPass = new THREE.ShaderPass(GrainVignetteShader);
   grainPass.renderToScreen = true;
@@ -920,7 +960,7 @@ function animate() {
     o.light.intensity = o.base * v;
     if (o.mat) o.mat.emissiveIntensity = o.matBase * (0.45 + v * 0.55);
   });
-  litGlassMat.emissiveIntensity = 1.6 * flick(t, 7.7);
+  litGlassMat.emissiveIntensity = 1.25 * flick(t, 7.7);
 
   // Drifting mist and floating dust
   mistSprites.forEach(m => { m.position.x += m.userData.sp * dt; if (m.position.x > 38) m.position.x = -38; });

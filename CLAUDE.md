@@ -75,7 +75,10 @@ When working with them:
      (`setupPost`) — bloom "glow", plus a film-grain + vignette shader pass. A Low/High
      quality toggle (`applyQuality`/`toggleQuality`, the ✨ Graphics button or the `g` key)
      controls bloom, mist amount, shadow resolution and pixel ratio; defaults to Low on
-     phones. Bump maps on the ground and walls add surface relief.
+     phones. Realism: normal maps derived from the noise textures (`normalFromCanvas`)
+     give the ground/walls real surface relief, anisotropic filtering keeps the ground
+     crisp, and a procedural night-sky environment map (`scene.environment` via
+     `PMREMGenerator`) gives every surface believable ambient reflection.
    - Optional gun: a glowing pickup (`gunPickup`/`gunSpawn`) appears at a random spot
      each round. Walk over it to equip (`equipGun`, limited ammo); Space or the 🔫 button
      fires (`shoot`) — a raycast against the monster. Hits `hitMonster` stun + knock it
