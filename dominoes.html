@@ -997,26 +997,28 @@ function makeTile3D(a, b) {
 }
 const boardTiles3D = new Map();  // key -> { mesh, tx, p, slot }
 function keyOf(t) { return Math.min(t[0], t[1]) + '-' + Math.max(t[0], t[1]); }
-// Serpentine layout: tiles run in a row, then turn a corner and run back the
-// other way on the next row, like a real domino chain snaking on the table.
+// Circular/spiral layout: tiles form a chain that spirals around the table,
+// like a traditional domino chain flowing from the center outward.
 function snakeLayout(n) {
-  const PW = (TABLE_R - 0.28) * 2, PH = (TABLE_R - 0.28) * 2;
-  let scl = 0.4, cols = 1, rows = 1;
-  for (let it = 0; it < 12; it++) {
-    cols = Math.max(1, Math.floor(PW / (scl * 1.02)));
-    rows = Math.ceil(n / cols);
-    if (rows * (scl * 0.62) <= PH || scl < 0.14) break;
-    scl *= 0.9;
-  }
-  const sx = scl * 1.02, sz = scl * 0.62;
-  const startZ = -(rows - 1) * sz / 2;
   const out = [];
+  let scl = 0.35;
+  const maxRadius = TABLE_R - 0.5;   // leave space from table edge
+  const tileSpacing = scl * 1.05;    // space between tile centers
+
+  let x = 0, z = 0, angle = 0, radius = 1.2;
+  const angleStep = 0.15;            // how much to turn per tile
+
   for (let i = 0; i < n; i++) {
-    const row = Math.floor(i / cols), col = i % cols;
-    const countInRow = Math.min(cols, n - row * cols);
-    const rowStartX = -(countInRow - 1) * sx / 2;
-    const posInRow = (row % 2 === 0) ? col : (countInRow - 1 - col);
-    out.push({ x: rowStartX + posInRow * sx, z: startZ + row * sz, scl });
+    x = Math.cos(angle) * radius;
+    z = Math.sin(angle) * radius;
+    out.push({ x, z, scl });
+
+    angle += angleStep;
+    radius += 0.15;                  // spiral outward
+    if (radius > maxRadius) {
+      radius = maxRadius;
+      angle += angleStep * 0.5;      // tighter turns at the edge
+    }
   }
   return out;
 }
