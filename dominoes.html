@@ -849,7 +849,9 @@ function renderGame() {
   const boardEmpty = view.board.length === 0;
   view.hand.forEach(t => {
     const el = dominoEl(t[0], t[1], false);
+    // A tile can play on left if it has the leftEnd value (the actual open pip)
     const canL = boardEmpty || t[0] === view.leftEnd || t[1] === view.leftEnd;
+    // A tile can play on right if it has the rightEnd value (the actual open pip)
     const canR = boardEmpty || t[0] === view.rightEnd || t[1] === view.rightEnd;
     const canPlay = boardEmpty || canL || canR;
     if (myTurn && canPlay) { el.classList.add('playable'); el.onclick = () => choosePlay(t, canL, canR, boardEmpty); }
@@ -862,12 +864,13 @@ function renderGame() {
 function send(o) { if (isHost) { if (o.t === 'play') hostTryPlay(myId, o.tile, o.side); else if (o.t === 'pass') hostTryPass(myId); } else if (hostConn && hostConn.open) hostConn.send(o); }
 function choosePlay(tile, canL, canR, boardEmpty) {
   if (boardEmpty) { send({ t: 'play', tile, side: 'R' }); return; }
+  // Validate that at least one end actually matches
+  if (!canL && !canR) { say('This tile does not match either open end.'); return; }
   if (canL && !canR) { send({ t: 'play', tile, side: 'L' }); return; }
   if (canR && !canL) { send({ t: 'play', tile, side: 'R' }); return; }
   // both ends work — ask which
-  say('Tap ◄ Left end or Right end ►');
-  turnBox.textContent = 'Play on which end?';
-  const oldBoard = boardWrap.onclick;
+  say('Tap ◄ Left (' + view.leftEnd + ') or Right (' + view.rightEnd + ') ►');
+  turnBox.textContent = 'Which end?';
   const l = document.createElement('button'); l.className = 'btn'; l.textContent = '◄ Left (' + view.leftEnd + ')';
   const r = document.createElement('button'); r.className = 'btn blue'; r.textContent = 'Right (' + view.rightEnd + ') ►';
   const bar = document.createElement('div'); bar.style.cssText = 'display:flex;gap:10px;justify-content:center;margin-top:8px'; bar.appendChild(l); bar.appendChild(r);
