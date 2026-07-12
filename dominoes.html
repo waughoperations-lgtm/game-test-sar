@@ -628,7 +628,7 @@ function personalView(id) {
   const counts = {}; G.order.forEach(pid => counts[pid] = G.hands[pid].length);
   return { t: 'game', roster: rosterArr(), hand: G.hands[id], board: G.board,
     leftEnd: G.leftEnd, rightEnd: G.rightEnd, boneyard: G.boneyard.length,
-    counts, turnId: G.order[G.turnIdx], you: id };
+    counts, turnId: G.order[G.turnIdx], you: id, isWinning: G.winner !== null };
 }
 function sendGameState() {
   roster = rosterArr();   // keep the host's own roster in sync for the HUD/seating
@@ -1024,7 +1024,8 @@ let lastTileKey = null;   // track the winning tile for slam effect
 function updateBoard3D(board) {
   const pos = snakeLayout(board.length);
   const present = new Set();
-  const isWinningMove = board.length > 0 && view && (view.hand.length === 0);   // check if current player just won
+  const isWinningMove = view && view.isWinning;   // check if game is won
+  let lastTileIndex = board.length - 1;   // the most recently played tile
   board.forEach((t, i) => {
     const key = keyOf(t); present.add(key);
     const L = pos[i];
@@ -1034,9 +1035,10 @@ function updateBoard3D(board) {
       mesh.scale.setScalar(L.scl);
       mesh.position.set(L.x, TABLE_H + 1.6, L.z);
       scene.add(mesh);
-      e = { mesh, tx: L.x, tz: L.z, tscl: L.scl, p: 0, isLast: isWinningMove && i === board.length - 1 };
+      const isLastTile = isWinningMove && i === lastTileIndex;
+      e = { mesh, tx: L.x, tz: L.z, tscl: L.scl, p: 0, isLast: isLastTile };
       boardTiles3D.set(key, e);
-      if (e.isLast) { lastTileKey = key; playSlam(); } else playClack();
+      if (isLastTile) { lastTileKey = key; playSlam(); } else playClack();
     }
     e.tx = L.x; e.tz = L.z; e.tscl = L.scl;
   });
