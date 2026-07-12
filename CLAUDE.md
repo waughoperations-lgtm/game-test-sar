@@ -30,15 +30,16 @@ When working with them:
   keep their tab open. To test: open multiplayer.html in two browser tabs (both need
   internet), Create a room in one and Join with the code in the other. For friends on
   other devices, the file needs to be hosted at a web link (e.g. GitHub Pages).
-- `dominoes.html` — a separate online "Domino Night" mode. Classic draw dominoes
-  (double-six set) for 2–4 friends around a 3D table in the town, each seated with a
-  floating name tag. Includes push-to-talk voice chat (hold SPACE / the on-screen
+- `dominoes.html` — a separate online "Domino Night" mode. Block-style dominoes
+  (double-six set, no drawing — if you can't match an open end you Skip your turn) for
+  2–4 friends around a 3D table in the town, each seated with a floating name tag. Includes push-to-talk voice chat (hold SPACE / the on-screen
   button) over WebRTC. Same PeerJS host-authoritative model as multiplayer.html: the
   host deals/validates turns and relays state; voice is a peer-to-peer audio mesh
   (`setupVoice`/`callEveryone`, mic muted until push-to-talk). The 3D scene is the
   hangout (table, seats, name tags, voice); the tile hand + played board are a 2D
   overlay. Dominoes engine + host validation: `fullSet`/`startRound`/`hostTryPlay`/
-  `hostTryDraw`/`hostTryPass`/`finishRound`. Mic needs the browser's permission prompt.
+  `hostTryPass`/`finishRound` (no draw pile; `hostTryPass` = Skip when you have no
+  legal move, all-skip round ends on lowest pips). Mic needs the browser's permission prompt.
   A "Practice vs computer" button (`practiceBtn`) starts a solo game against simple
   bots (`botAct`/`scheduleBots`) — no second player, no mic, no internet needed. The
   host re-renders its own hand/board via `renderGame()` inside `sendGameState`.

@@ -13,9 +13,8 @@
   .card { background: rgba(12,16,28,0.82); border-radius: 14px; padding: 8px 14px;
           box-shadow: 0 3px 12px rgba(0,0,0,0.5); font-weight: 900; }
   #turnBox { top: 12px; left: 50%; transform: translateX(-50%); font-size: 18px; color: #ffe9b0; text-align: center; }
-  #boneBox { top: 12px; right: 12px; font-size: 15px; color: #cfe0ff; }
   #micBox  { top: 12px; left: 12px; font-size: 15px; color: #9fb0d0; }
-  #viewBtn { top: 52px; right: 12px; font-size: 14px; font-family: inherit; border: none;
+  #viewBtn { top: 12px; right: 12px; font-size: 14px; font-family: inherit; border: none;
              cursor: pointer; pointer-events: auto; color: #cfe0ff; }
   #message { top: 56px; left: 50%; transform: translateX(-50%); font-size: 16px; opacity: 0;
              transition: opacity .3s; max-width: 90vw; text-align: center; }
@@ -82,7 +81,6 @@
 
 <div class="hud card" id="micBox">🎤 hold SPACE to talk</div>
 <div class="hud card" id="turnBox">—</div>
-<div class="hud card" id="boneBox">Boneyard: 0</div>
 <button class="hud card" id="viewBtn">🔍 Overhead view</button>
 <div class="hud card" id="message"></div>
 
@@ -90,8 +88,7 @@
 <div id="handWrap" class="hidden">
   <div id="hand"></div>
   <div id="actions">
-    <button class="btn blue" id="drawBtn">Draw a tile</button>
-    <button class="btn grey" id="passBtn">Pass</button>
+    <button class="btn grey" id="passBtn">Skip turn (no move)</button>
   </div>
 </div>
 <button id="talkBtn" class="hidden">HOLD<br>to talk</button>
@@ -385,7 +382,6 @@ const msgEl = document.getElementById('message');
 let msgTimer = null;
 function say(t) { msgEl.textContent = t; msgEl.style.opacity = 1; clearTimeout(msgTimer); msgTimer = setTimeout(() => msgEl.style.opacity = 0, 3000); }
 const turnBox = document.getElementById('turnBox');
-const boneBox = document.getElementById('boneBox');
 
 // =====================================================================
 //  DOMINOES ENGINE (host-authoritative)
@@ -498,7 +494,6 @@ function onHostData(conn, msg) {
     updateLobbyList(); say((msg.name || 'A player') + ' joined');
     if (phase === 'playing') sendGameState();
   } else if (msg.t === 'play')  { hostTryPlay(id, msg.tile, msg.side); }
-  else if (msg.t === 'draw')    { hostTryDraw(id); }
   else if (msg.t === 'pass')    { hostTryPass(id); }
   else if (msg.t === 'talk')    { broadcast({ t: 'talk', id, on: msg.on }); setAvatarTalking(id, msg.on); }
 }
@@ -593,17 +588,9 @@ function hostTryPlay(id, tile, side) {
   if (hand.length === 0) { finishRound(id, null); return; }
   advanceTurn(); sendGameState();
 }
-function hostTryDraw(id) {
-  if (!G || id !== currentId() || G.winner) return;
-  if (G.boneyard.length === 0) return;
-  if (handCanPlay(G.hands[id], G.leftEnd, G.rightEnd, G.board.length === 0)) return; // only draw when stuck
-  G.hands[id].push(G.boneyard.pop());
-  sendGameState();
-}
 function hostTryPass(id) {
   if (!G || id !== currentId() || G.winner) return;
-  if (G.boneyard.length > 0) return; // must draw first
-  if (handCanPlay(G.hands[id], G.leftEnd, G.rightEnd, G.board.length === 0)) return; // can't pass if you can play
+  if (handCanPlay(G.hands[id], G.leftEnd, G.rightEnd, G.board.length === 0)) return; // can't skip if you can play
   G.passes++; advanceTurn();
   if (G.passes >= G.order.length) { // everyone stuck -> lowest pips wins
     let win = G.order[0], low = Infinity;
@@ -642,7 +629,6 @@ function botAct() {
     if (t[0] === G.leftEnd || t[1] === G.leftEnd) { move = { tile: t, side: 'L' }; break; }
   }
   if (move) hostTryPlay(id, move.tile, move.side);
-  else if (G.boneyard.length > 0) hostTryDraw(id);
   else hostTryPass(id);
 }
 
@@ -755,7 +741,6 @@ const boardWrap = document.getElementById('boardWrap');
 const boardEl = document.getElementById('board');
 const handWrap = document.getElementById('handWrap');
 const handEl = document.getElementById('hand');
-const drawBtn = document.getElementById('drawBtn');
 const passBtn = document.getElementById('passBtn');
 const PIPMAP = { 0: [], 1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8] };
 function halfEl(v) { const h = document.createElement('div'); h.className = 'half'; for (let i = 0; i < 9; i++) { const s = document.createElement('span'); if (PIPMAP[v].includes(i)) s.className = 'pip'; h.appendChild(s); } return h; }
@@ -778,7 +763,6 @@ function renderGame() {
     view.board.forEach(t => boardEl.appendChild(dominoEl(t[0], t[1], true)));
     const r = document.createElement('span'); r.className = 'end'; r.textContent = view.rightEnd + ' ►'; boardEl.appendChild(r);
   }
-  boneBox.textContent = 'Boneyard: ' + view.boneyard;
   // turn
   const myTurn = view.turnId === myId;
   const turnName = (roster.find(p => p.id === view.turnId) || {}).name || '…';
@@ -797,10 +781,9 @@ function renderGame() {
   });
   // actions
   const canPlayAny = myTurn && (boardEmpty || view.hand.some(t => t[0] === view.leftEnd || t[1] === view.leftEnd || t[0] === view.rightEnd || t[1] === view.rightEnd));
-  drawBtn.classList.toggle('hidden', !(myTurn && !canPlayAny && view.boneyard > 0));
-  passBtn.classList.toggle('hidden', !(myTurn && !canPlayAny && view.boneyard === 0));
+  passBtn.classList.toggle('hidden', !(myTurn && !canPlayAny));   // no move → skip your turn
 }
-function send(o) { if (isHost) { if (o.t === 'play') hostTryPlay(myId, o.tile, o.side); else if (o.t === 'draw') hostTryDraw(myId); else if (o.t === 'pass') hostTryPass(myId); } else if (hostConn && hostConn.open) hostConn.send(o); }
+function send(o) { if (isHost) { if (o.t === 'play') hostTryPlay(myId, o.tile, o.side); else if (o.t === 'pass') hostTryPass(myId); } else if (hostConn && hostConn.open) hostConn.send(o); }
 function choosePlay(tile, canL, canR, boardEmpty) {
   if (boardEmpty) { send({ t: 'play', tile, side: 'R' }); return; }
   if (canL && !canR) { send({ t: 'play', tile, side: 'L' }); return; }
@@ -816,7 +799,6 @@ function choosePlay(tile, canL, canR, boardEmpty) {
   l.onclick = () => send({ t: 'play', tile, side: 'L' });
   r.onclick = () => send({ t: 'play', tile, side: 'R' });
 }
-drawBtn.onclick = () => send({ t: 'draw' });
 passBtn.onclick = () => send({ t: 'pass' });
 
 function showEnd(title, text) {
