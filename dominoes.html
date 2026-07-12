@@ -650,9 +650,11 @@ function hostTryPlay(id, tile, side) {
   let [a, b] = hand[idx];
   if (boardEmpty) { G.board.push([a, b]); G.leftEnd = a; G.rightEnd = b; placed = true; }
   else if (side === 'L') {
+    if (!tileMatches([a, b], G.leftEnd, G.rightEnd)) return;
     if (b === G.leftEnd) { G.board.unshift([a, b]); G.leftEnd = a; placed = true; }
     else if (a === G.leftEnd) { G.board.unshift([b, a]); G.leftEnd = b; placed = true; }
   } else {
+    if (!tileMatches([a, b], G.leftEnd, G.rightEnd)) return;
     if (a === G.rightEnd) { G.board.push([a, b]); G.rightEnd = b; placed = true; }
     else if (b === G.rightEnd) { G.board.push([b, a]); G.rightEnd = a; placed = true; }
   }
