@@ -964,6 +964,19 @@ function playClack() {
     o.connect(g); g.connect(dctx.destination); o.start(t); o.stop(t + 0.15);
   } catch (e) {}
 }
+function playSlam() {
+  try {
+    if (!dctx) dctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (dctx.state === 'suspended') dctx.resume();
+    const t = dctx.currentTime, dur = 0.5;
+    const o1 = dctx.createOscillator(); o1.frequency.setValueAtTime(150, t); o1.frequency.exponentialRampToValueAtTime(30, t + dur);
+    const e1 = dctx.createGain(); e1.gain.setValueAtTime(0.9, t); e1.gain.exponentialRampToValueAtTime(0, t + dur);
+    o1.connect(e1); e1.connect(dctx.destination); o1.start(t); o1.stop(t + dur);
+    const o2 = dctx.createOscillator(); o2.frequency.setValueAtTime(350, t); o2.frequency.exponentialRampToValueAtTime(100, t + 0.2);
+    const e2 = dctx.createGain(); e2.gain.setValueAtTime(0.7, t); e2.gain.exponentialRampToValueAtTime(0, t + 0.2);
+    o2.connect(e2); e2.connect(dctx.destination); o2.start(t); o2.stop(t + 0.2);
+  } catch (e) {}
+}
 const PIP3 = { 0: [], 1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8] };
 function tileTexture(a, b) {
   const c = document.createElement('canvas'); c.width = 256; c.height = 128; const x = c.getContext('2d');
@@ -1007,9 +1020,11 @@ function snakeLayout(n) {
   }
   return out;
 }
+let lastTileKey = null;   // track the winning tile for slam effect
 function updateBoard3D(board) {
   const pos = snakeLayout(board.length);
   const present = new Set();
+  const isWinningMove = board.length > 0 && view && (view.hand.length === 0);   // check if current player just won
   board.forEach((t, i) => {
     const key = keyOf(t); present.add(key);
     const L = pos[i];
@@ -1019,8 +1034,9 @@ function updateBoard3D(board) {
       mesh.scale.setScalar(L.scl);
       mesh.position.set(L.x, TABLE_H + 1.6, L.z);
       scene.add(mesh);
-      e = { mesh, tx: L.x, tz: L.z, tscl: L.scl, p: 0 }; boardTiles3D.set(key, e);
-      playClack();
+      e = { mesh, tx: L.x, tz: L.z, tscl: L.scl, p: 0, isLast: isWinningMove && i === board.length - 1 };
+      boardTiles3D.set(key, e);
+      if (e.isLast) { lastTileKey = key; playSlam(); } else playClack();
     }
     e.tx = L.x; e.tz = L.z; e.tscl = L.scl;
   });
@@ -1071,14 +1087,18 @@ function animate() {
 
   // Tiles settling onto the table
   const ty = TABLE_H + 0.11;
+  let tableShakeStrength = 0;
   boardTiles3D.forEach(e => {
-    if (e.p < 1) e.p = Math.min(1, e.p + dt * 3);
+    const dropSpeed = e.isLast ? 5 : 3;   // last tile drops faster
+    if (e.p < 1) e.p = Math.min(1, e.p + dt * dropSpeed);
     const ease = 1 - (1 - e.p) * (1 - e.p);
+    const bounce = Math.max(0, Math.sin((1 - ease) * Math.PI * 2.5) * (1 - ease) * 0.3);
     const k = Math.min(1, dt * 8);
     e.mesh.position.x += (e.tx - e.mesh.position.x) * k;
     e.mesh.position.z += (e.tz - e.mesh.position.z) * k;
-    e.mesh.position.y = ty + (1 - ease) * 1.5;
+    e.mesh.position.y = ty + (1 - ease) * 1.8 + bounce;
     e.mesh.rotation.z = (1 - ease) * 0.5;
+    if (e.isLast && e.p >= 0.95) tableShakeStrength = Math.max(tableShakeStrength, (1 - e.p) * 15);   // shake when landing
     const cur = e.mesh.scale.x + (e.tscl - e.mesh.scale.x) * k;
     e.mesh.scale.setScalar(cur);
   });
@@ -1086,14 +1106,15 @@ function animate() {
   // Camera: seated first-person, or a top-down overhead view of the board
   // hide the hanging lamp when looking straight down so it doesn't block the board
   lampShade.visible = lampBulb.visible = lampCord.visible = !topView;
+  const shake = { x: (Math.random() - 0.5) * tableShakeStrength * 0.001, y: (Math.random() - 0.5) * tableShakeStrength * 0.0005, z: (Math.random() - 0.5) * tableShakeStrength * 0.001 };
   if (topView) {
     camera.up.set(0, 0, -1);
-    camera.position.set(0, 5.0, 0.0001);
+    camera.position.set(0 + shake.x, 5.0 + shake.y, 0.0001 + shake.z);
     camera.lookAt(0, 0.9, 0);
   } else {
     camera.up.set(0, 1, 0);
     const pos = seatPos(mySeat, seatCount);
-    camera.position.set(pos.x * 1.02, 1.55, pos.z * 1.02);
+    camera.position.set(pos.x * 1.02 + shake.x, 1.55 + shake.y, pos.z * 1.02 + shake.z);
     camera.lookAt(0, 0.75, 0);
   }
   renderer.render(scene, camera);
