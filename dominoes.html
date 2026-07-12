@@ -1005,23 +1005,25 @@ function snakeLayout(n) {
   const tileWidth = scl * 1.02;
   const tileHeight = scl * 0.62;
 
-  // Calculate how many tiles fit per row
-  const maxWidth = TABLE_R * 2 - 1;
-  let tilesPerRow = Math.floor(maxWidth / tileWidth);
+  // Calculate how many tiles fit per row (leaving margins from table edge)
+  const maxWidth = (TABLE_R - 0.3) * 2;
+  let tilesPerRow = Math.max(3, Math.floor(maxWidth / tileWidth));
 
   let row = 0, col = 0;
 
   for (let i = 0; i < n; i++) {
     // Calculate position based on row and column
     const startX = -(tilesPerRow - 1) * tileWidth / 2;
-    const startZ = -2.5;
+    const rowHeight = tileHeight * 0.7;  // vertical spacing between rows
+    const maxRows = Math.ceil(n / tilesPerRow);
+    const startZ = (maxRows - 1) * rowHeight / 2;
 
     // Alternate direction each row (snake pattern)
     const xPos = (row % 2 === 0)
       ? startX + col * tileWidth
       : startX + (tilesPerRow - 1 - col) * tileWidth;
 
-    const zPos = startZ + row * tileHeight;
+    const zPos = startZ - row * rowHeight;
 
     out.push({ x: xPos, z: zPos, scl });
 
