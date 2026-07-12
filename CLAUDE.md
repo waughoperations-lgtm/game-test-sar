@@ -59,6 +59,13 @@ When working with them:
   `addChat`, 💬 button) works as a voice backup — messages relay through the host and
   pop a floating speech bubble over the sender's avatar (`makeBubbleSprite`/`bubbles`);
   the chat input stops SPACE/V from triggering push-to-talk / the overhead toggle.
+  A "⚡ Quick Play" button is a basic serverless matchmaker demo (`quickBtn`/`quickJoin`,
+  `QUICK_ID`): the first clicker claims a shared PeerJS "lobby" ID and hosts the open
+  game, the next players fail to claim it and auto-join — matching strangers with no
+  server of our own (one game forms at a time; real matchmaking would need a server).
+  Quick Play sets `strangerMode`: voice is disabled and chat is limited to preset
+  "canned" phrases (`cannedRow`, `configureChatSafety`) for safety. Private friend
+  rooms (by code) keep full voice + free-text chat.
 
 ## How the code is organized (all inside index.html)
 1. CSS styles for the on-screen displays (timer, found counter, giggle meter, menus)

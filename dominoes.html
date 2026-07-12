@@ -63,6 +63,9 @@
   #chatLog .who { color: #ffd268; }
   #emojiRow { display: flex; gap: 4px; margin-bottom: 8px; flex-wrap: wrap; }
   #emojiRow button { font-size: 20px; background: #1b2233; border: 1px solid #33405f; border-radius: 8px; cursor: pointer; padding: 2px 6px; }
+  #cannedRow { display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 8px; }
+  #cannedRow button { font-family: inherit; font-weight: 700; font-size: 12px; color: #dfe4f2; background: #1b2233;
+                      border: 1px solid #33405f; border-radius: 8px; cursor: pointer; padding: 5px 8px; }
   #chatInputRow { display: flex; gap: 6px; }
   #chatInput { flex: 1; font-family: inherit; font-size: 14px; padding: 8px; border-radius: 8px; border: 1px solid #33405f; background: #1b2233; color: #eef2ff; min-width: 0; }
   #chatSend { font-family: inherit; font-weight: 900; background: #ffd268; border: none; border-radius: 8px; padding: 0 12px; cursor: pointer; }
@@ -108,6 +111,7 @@
 <div id="chatPanel" class="hidden">
   <div id="chatLog"></div>
   <div id="emojiRow"></div>
+  <div id="cannedRow" class="hidden"></div>
   <div id="chatInputRow"><input id="chatInput" maxlength="80" placeholder="Type a message…"><button id="chatSend">Send</button></div>
 </div>
 
@@ -115,8 +119,10 @@
   <div class="panel">
     <div id="menuView">
       <h1>Domino Night</h1>
-      <p>Play classic dominoes with friends around a table &mdash; with voice chat. One player creates a room; the others join with the code.</p>
+      <p>Play dominoes around a table. <b>Quick Play</b> matches you with anyone online (text-only, no voice, for safety). Or play privately with friends by room code &mdash; with voice chat.</p>
       <input id="nameInput" maxlength="12" placeholder="Your name">
+      <button class="btn" id="quickBtn" style="background:#7be0a0; box-shadow:0 4px 0 #3f9e6a; color:#083019;">⚡ Quick Play (match me)</button>
+      <div class="divider2">or play privately with friends</div>
       <button class="btn" id="createBtn">Create a table</button>
       <div class="divider2">or join a friend</div>
       <input id="codeInput" maxlength="4" placeholder="Room code" style="text-transform:uppercase; letter-spacing:4px;">
@@ -128,7 +134,7 @@
     <div id="lobbyView" class="hidden">
       <h1>Table</h1>
       <div id="roomCode">----</div>
-      <p style="margin:2px 0 10px;font-size:12px;color:#7a8299;">Tap the code to copy &mdash; share it with friends (2&ndash;4 players)</p>
+      <p id="lobbyHint" style="margin:2px 0 10px;font-size:12px;color:#7a8299;">Tap the code to copy &mdash; share it with friends (2&ndash;4 players)</p>
       <ul id="playerList"></ul>
       <button class="btn" id="startBtn" disabled>Start game</button>
       <p id="waitHint" class="hidden">Waiting for the host to start…</p>
@@ -421,6 +427,7 @@ let peer = null, myId = null, isHost = false, hostConn = null;
 const conns = [];
 let phase = 'menu';
 let myName = 'Player', roomCode = '';
+let strangerMode = false;   // true for Quick Play (matched strangers): no voice, canned chat only
 const players = new Map();     // host: id -> {id,name,color,seat}
 let roster = [];              // [{id,name,color,seat}] known to everyone
 let G = null;                // host game state
@@ -454,9 +461,20 @@ const playerListEl = document.getElementById('playerList');
 
 function showLobby() {
   startOverlay.classList.remove('hidden'); menuView.classList.add('hidden'); lobbyView.classList.remove('hidden');
-  roomCodeEl.textContent = roomCode;
+  const lobbyHint = document.getElementById('lobbyHint');
+  if (strangerMode) {
+    roomCodeEl.textContent = '⚡ Quick Play';
+    lobbyHint.textContent = 'Matching you with players online — the host starts when 2+ are here. Text-only, no voice.';
+    waitHint.textContent = 'Waiting for the host to start the match…';
+  } else {
+    roomCodeEl.textContent = roomCode;
+    lobbyHint.textContent = 'Tap the code to copy — share it with friends (2–4 players)';
+    waitHint.textContent = 'Waiting for the host to start…';
+  }
+  document.getElementById('micBox').classList.toggle('hidden', strangerMode);
   startBtn.classList.toggle('hidden', !isHost); waitHint.classList.toggle('hidden', isHost);
   document.getElementById('chatBtn').classList.remove('hidden');
+  configureChatSafety();
   updateLobbyList();
 }
 function updateLobbyList() {
@@ -490,6 +508,40 @@ document.getElementById('createBtn').onclick = () => {
     else menuErr.textContent = 'Could not create table (' + e.type + ').';
   });
 };
+// ----- Quick Play: a basic serverless matchmaker -----
+// First player to click claims a shared "lobby" ID and hosts the open game;
+// the next players fail to claim it and auto-join. (A real matchmaker would use
+// a server so many games can form at once — this demo forms one at a time.)
+const QUICK_ID = PEER_PREFIX + 'quickplay-lobby-v1';
+document.getElementById('quickBtn').onclick = () => {
+  if (!window.Peer) { menuErr.textContent = 'Online library did not load — check internet and refresh.'; return; }
+  myName = (nameInput.value.trim() || 'Player').slice(0, 12);
+  strangerMode = true; roomCode = 'QUICK'; menuErr.textContent = 'Finding a game…';
+  peer = new Peer(QUICK_ID, { debug: 0 });
+  peer.on('open', id => {                 // nobody waiting → we host the open game
+    myId = id; isHost = true; phase = 'lobby'; players.clear();
+    players.set(id, { id, name: myName, color: COLORS[0], seat: 0 });
+    menuErr.textContent = ''; showLobby();
+  });
+  peer.on('connection', c => setupHostConn(c));
+  peer.on('error', e => {
+    if (e.type === 'unavailable-id') { peer.destroy(); quickJoin(); }   // a game is forming → join it
+    else menuErr.textContent = 'Matchmaking error (' + e.type + '). Try again.';
+  });
+};
+function quickJoin() {
+  peer = new Peer({ debug: 0 });
+  peer.on('open', id => {
+    myId = id; isHost = false;
+    hostConn = peer.connect(QUICK_ID, { reliable: true });
+    hostConn.on('open', () => { hostConn.send({ t: 'hello', name: myName }); phase = 'lobby'; menuErr.textContent = ''; showLobby(); });
+    hostConn.on('data', d => onClientData(d));
+    hostConn.on('close', () => { if (phase !== 'over') endLocal('The match ended (the host left).'); });
+    hostConn.on('error', () => { menuErr.textContent = 'Could not join the match — try Quick Play again.'; });
+    setTimeout(() => { if (phase === 'menu') menuErr.textContent = 'No match yet — try Quick Play again in a moment.'; }, 7000);
+  });
+  peer.on('error', e => { menuErr.textContent = 'Matchmaking error (' + e.type + ').'; });
+}
 function setupHostConn(conn) {
   conn.on('open', () => conns.push(conn));
   conn.on('data', d => onHostData(conn, d));
@@ -843,6 +895,16 @@ const chatSend = document.getElementById('chatSend');
   const b = document.createElement('button'); b.textContent = em; b.onclick = () => sendChat(em);
   document.getElementById('emojiRow').appendChild(b);
 });
+// Preset "canned" phrases used with matched strangers (no free typing, for safety)
+['Hi!', 'Good game!', 'Nice move!', 'Your turn 🙂', 'Oops!', 'Well played!', 'Thanks!', 'Good luck!', 'So close!', 'GG!'].forEach(ph => {
+  const b = document.createElement('button'); b.textContent = ph; b.onclick = () => sendChat(ph);
+  document.getElementById('cannedRow').appendChild(b);
+});
+function configureChatSafety() {
+  // Strangers: canned phrases only (hide free-text box). Friends: free typing.
+  document.getElementById('chatInputRow').classList.toggle('hidden', strangerMode);
+  document.getElementById('cannedRow').classList.toggle('hidden', !strangerMode);
+}
 chatBtn.onclick = () => { chatPanel.classList.toggle('hidden'); if (!chatPanel.classList.contains('hidden')) chatInput.focus(); };
 chatSend.onclick = () => { const v = chatInput.value.trim(); if (v) { sendChat(v); chatInput.value = ''; } };
 chatInput.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter') chatSend.onclick(); });
