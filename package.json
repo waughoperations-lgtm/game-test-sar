@@ -1,0 +1,12 @@
+{
+  "name": "spooky-town-games",
+  "version": "1.0.0",
+  "description": "Hide-from-the-monster and Domino Night browser games",
+  "private": true,
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

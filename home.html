@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Spooky Town — Games</title>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;900&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { min-height: 100vh; font-family: 'Nunito', system-ui, sans-serif; color: #eef2ff;
+         background: radial-gradient(1200px 600px at 50% -10%, #1a1030 0%, #0a0d18 55%, #05060a 100%);
+         display: flex; flex-direction: column; align-items: center; padding: 40px 20px; }
+  h1 { font-size: clamp(30px, 6vw, 52px); font-weight: 900; color: #ff6a5a; text-align: center;
+       text-shadow: 0 3px 20px rgba(255,90,70,0.35); margin-bottom: 6px; }
+  .tag { color: #9aa4c4; font-weight: 700; margin-bottom: 34px; text-align: center; }
+  .grid { display: grid; gap: 20px; width: 100%; max-width: 900px;
+          grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+  a.card { text-decoration: none; color: inherit; background: #12141f; border: 1px solid #2a2340;
+           border-radius: 20px; padding: 26px 22px; display: flex; flex-direction: column; gap: 8px;
+           box-shadow: 0 10px 30px rgba(0,0,0,0.5); transition: transform .15s, box-shadow .15s, border-color .15s; }
+  a.card:hover { transform: translateY(-4px); box-shadow: 0 16px 40px rgba(0,0,0,0.6); border-color: #4a3f6f; }
+  a.card:active { transform: translateY(-1px); }
+  .emoji { font-size: 46px; }
+  .title { font-size: 22px; font-weight: 900; color: #ffe9b0; }
+  .desc { font-size: 14px; font-weight: 700; color: #b9c0d8; line-height: 1.45; }
+  .badge { align-self: flex-start; margin-top: 6px; font-size: 12px; font-weight: 900; padding: 4px 10px;
+           border-radius: 20px; background: #24304a; color: #9fd0ff; }
+  .badge.solo { background: #243a2a; color: #9be7a6; }
+  footer { margin-top: 40px; color: #5b6486; font-size: 13px; font-weight: 700; text-align: center; max-width: 620px; line-height: 1.5; }
+</style>
+</head>
+<body>
+  <h1>👹 Spooky Town</h1>
+  <div class="tag">Pick a game to play</div>
+  <div class="grid">
+    <a class="card" href="index.html">
+      <div class="emoji">🔦</div>
+      <div class="title">Hide from the Monster</div>
+      <div class="desc">A giant monster hunts you through the dark town. Survive 2 minutes — or find the gun and fight back.</div>
+      <span class="badge solo">Single player</span>
+    </a>
+    <a class="card" href="multiplayer.html">
+      <div class="emoji">🎮</div>
+      <div class="title">Monster Multiplayer</div>
+      <div class="desc">Play online with friends. One player is secretly the monster and hunts everyone else. Hiders survive to win.</div>
+      <span class="badge">Online · with friends</span>
+    </a>
+    <a class="card" href="dominoes.html">
+      <div class="emoji">🁫</div>
+      <div class="title">Domino Night</div>
+      <div class="desc">Classic dominoes around a 3D table with voice chat. Quick Play to match with anyone, or play privately by room code.</div>
+      <span class="badge">Online · Quick Play</span>
+    </a>
+  </div>
+  <footer>Best on a computer or phone with an internet connection. Online games connect players directly (peer-to-peer) — for the online modes, the person who starts the room keeps their tab open.</footer>
+</body>
+</html>
