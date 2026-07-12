@@ -606,7 +606,7 @@ function startRound() {
   const ids = [...players.keys()];
   const n = ids.length;
   const deck = shuffle(fullSet());
-  const per = n === 2 ? 7 : 5;
+  const per = 7;   // each player gets 7 tiles
   const hands = {};
   ids.forEach(id => hands[id] = deck.splice(0, per));
   // starting player: highest double, else heaviest tile
