@@ -997,29 +997,41 @@ function makeTile3D(a, b) {
 }
 const boardTiles3D = new Map();  // key -> { mesh, tx, p, slot }
 function keyOf(t) { return Math.min(t[0], t[1]) + '-' + Math.max(t[0], t[1]); }
-// Circular/spiral layout: tiles form a chain that spirals around the table,
-// like a traditional domino chain flowing from the center outward.
+// Traditional chain layout: tiles flow in a winding path across the table
+// like a real domino chain, moving left-right then up-down in rows
 function snakeLayout(n) {
   const out = [];
-  let scl = 0.35;
-  const maxRadius = TABLE_R - 0.5;   // leave space from table edge
-  const tileSpacing = scl * 1.05;    // space between tile centers
+  let scl = 0.38;
+  const tileWidth = scl * 1.02;
+  const tileHeight = scl * 0.62;
 
-  let x = 0, z = 0, angle = 0, radius = 1.2;
-  const angleStep = 0.15;            // how much to turn per tile
+  // Calculate how many tiles fit per row
+  const maxWidth = TABLE_R * 2 - 1;
+  let tilesPerRow = Math.floor(maxWidth / tileWidth);
+
+  let row = 0, col = 0;
 
   for (let i = 0; i < n; i++) {
-    x = Math.cos(angle) * radius;
-    z = Math.sin(angle) * radius;
-    out.push({ x, z, scl });
+    // Calculate position based on row and column
+    const startX = -(tilesPerRow - 1) * tileWidth / 2;
+    const startZ = -2.5;
 
-    angle += angleStep;
-    radius += 0.15;                  // spiral outward
-    if (radius > maxRadius) {
-      radius = maxRadius;
-      angle += angleStep * 0.5;      // tighter turns at the edge
+    // Alternate direction each row (snake pattern)
+    const xPos = (row % 2 === 0)
+      ? startX + col * tileWidth
+      : startX + (tilesPerRow - 1 - col) * tileWidth;
+
+    const zPos = startZ + row * tileHeight;
+
+    out.push({ x: xPos, z: zPos, scl });
+
+    col++;
+    if (col >= tilesPerRow) {
+      col = 0;
+      row++;
     }
   }
+
   return out;
 }
 let lastTileKey = null;   // track the winning tile for slam effect
