@@ -54,6 +54,11 @@ When working with them:
   single-player realism pass: normal maps on the ground/walls/table (`normalFromCanvas`),
   anisotropic ground filtering, and a night-sky environment map (`scene.environment` via
   `PMREMGenerator`) for believable ambient reflection on the wood, felt and tiles.
+  The played chain snakes: tiles run a row then turn a corner onto the next row to
+  stay on the felt (`snakeLayout`). Text chat with quick-emoji buttons (`sendChat`/
+  `addChat`, 💬 button) works as a voice backup — messages relay through the host and
+  pop a floating speech bubble over the sender's avatar (`makeBubbleSprite`/`bubbles`);
+  the chat input stops SPACE/V from triggering push-to-talk / the overhead toggle.
 
 ## How the code is organized (all inside index.html)
 1. CSS styles for the on-screen displays (timer, found counter, giggle meter, menus)

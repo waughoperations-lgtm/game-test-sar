@@ -54,6 +54,18 @@
              width: 74px; height: 74px; font-size: 13px; line-height: 1.1; background: #2a3350; color: #cfe0ff;
              box-shadow: 0 4px 0 #161d30; border: none; cursor: pointer; pointer-events: auto; font-weight: 900; }
   #talkBtn.talking { background: #4fd06a; color: #06210d; box-shadow: 0 4px 0 #2d8a41; }
+  #chatBtn { position: fixed; z-index: 7; bottom: 150px; left: 16px; width: 60px; height: 60px; border-radius: 50%;
+             font-size: 24px; background: #2a3350; color: #cfe0ff; box-shadow: 0 4px 0 #161d30; border: none; cursor: pointer; pointer-events: auto; }
+  #chatPanel { position: fixed; z-index: 8; bottom: 150px; left: 16px; width: min(300px, 82vw);
+               background: rgba(12,16,28,0.94); border-radius: 14px; padding: 10px; box-shadow: 0 6px 20px rgba(0,0,0,0.6); pointer-events: auto; }
+  #chatLog { max-height: 130px; overflow-y: auto; font-size: 13px; font-weight: 700; color: #dfe4f2; margin-bottom: 8px; }
+  #chatLog div { margin-bottom: 3px; word-break: break-word; }
+  #chatLog .who { color: #ffd268; }
+  #emojiRow { display: flex; gap: 4px; margin-bottom: 8px; flex-wrap: wrap; }
+  #emojiRow button { font-size: 20px; background: #1b2233; border: 1px solid #33405f; border-radius: 8px; cursor: pointer; padding: 2px 6px; }
+  #chatInputRow { display: flex; gap: 6px; }
+  #chatInput { flex: 1; font-family: inherit; font-size: 14px; padding: 8px; border-radius: 8px; border: 1px solid #33405f; background: #1b2233; color: #eef2ff; min-width: 0; }
+  #chatSend { font-family: inherit; font-weight: 900; background: #ffd268; border: none; border-radius: 8px; padding: 0 12px; cursor: pointer; }
   .hidden { display: none !important; }
   /* Overlays */
   .overlay { position: fixed; inset: 0; z-index: 10; background: rgba(3,6,14,0.85);
@@ -92,6 +104,12 @@
   </div>
 </div>
 <button id="talkBtn" class="hidden">HOLD<br>to talk</button>
+<button id="chatBtn" class="hidden">💬</button>
+<div id="chatPanel" class="hidden">
+  <div id="chatLog"></div>
+  <div id="emojiRow"></div>
+  <div id="chatInputRow"><input id="chatInput" maxlength="80" placeholder="Type a message…"><button id="chatSend">Send</button></div>
+</div>
 
 <div class="overlay" id="startOverlay">
   <div class="panel">
@@ -438,6 +456,7 @@ function showLobby() {
   startOverlay.classList.remove('hidden'); menuView.classList.add('hidden'); lobbyView.classList.remove('hidden');
   roomCodeEl.textContent = roomCode;
   startBtn.classList.toggle('hidden', !isHost); waitHint.classList.toggle('hidden', isHost);
+  document.getElementById('chatBtn').classList.remove('hidden');
   updateLobbyList();
 }
 function updateLobbyList() {
@@ -496,6 +515,7 @@ function onHostData(conn, msg) {
   } else if (msg.t === 'play')  { hostTryPlay(id, msg.tile, msg.side); }
   else if (msg.t === 'pass')    { hostTryPass(id); }
   else if (msg.t === 'talk')    { broadcast({ t: 'talk', id, on: msg.on }); setAvatarTalking(id, msg.on); }
+  else if (msg.t === 'chat')    { const nm = (players.get(id) || {}).name || '?'; const tx = ('' + msg.text).slice(0, 80); broadcast({ t: 'chat', id, name: nm, text: tx }); addChat(nm, tx, id); }
 }
 document.getElementById('joinBtn').onclick = () => {
   if (!window.Peer) { menuErr.textContent = 'Online library did not load — check internet and refresh.'; return; }
@@ -522,6 +542,7 @@ function onClientData(msg) {
   else if (msg.t === 'talk') setAvatarTalking(msg.id, msg.on);
   else if (msg.t === 'over') showEnd(msg.title, msg.text);
   else if (msg.t === 'msg') say(msg.text);
+  else if (msg.t === 'chat') addChat(msg.name, msg.text, msg.id);
 }
 
 // ----- Start / deal (host) -----
@@ -698,8 +719,9 @@ function stopTalk() {
   sendTalk(false); setAvatarTalking(myId, false);
 }
 function sendTalk(on) { if (isHost) { broadcast({ t: 'talk', id: myId, on }); } else if (hostConn && hostConn.open) hostConn.send({ t: 'talk', on }); }
-addEventListener('keydown', e => { if (e.code === 'Space' && phase === 'playing') { e.preventDefault(); startTalk(); } });
-addEventListener('keyup', e => { if (e.code === 'Space') { e.preventDefault(); stopTalk(); } });
+const typingInChat = () => document.activeElement && document.activeElement.id === 'chatInput';
+addEventListener('keydown', e => { if (typingInChat()) return; if (e.code === 'Space' && phase === 'playing') { e.preventDefault(); startTalk(); } });
+addEventListener('keyup', e => { if (typingInChat()) return; if (e.code === 'Space') { e.preventDefault(); stopTalk(); } });
 const talkBtn = document.getElementById('talkBtn');
 talkBtn.addEventListener('touchstart', e => { e.preventDefault(); startTalk(); }, { passive: false });
 talkBtn.addEventListener('touchend', e => { e.preventDefault(); stopTalk(); }, { passive: false });
@@ -750,7 +772,7 @@ function dominoEl(a, b, small) {
   return d;
 }
 let selected = null;
-function enterPlaying() { phase = 'playing'; startOverlay.classList.add('hidden'); endOverlay.classList.add('hidden'); boardWrap.classList.remove('hidden'); handWrap.classList.remove('hidden'); buildSeats(); }
+function enterPlaying() { phase = 'playing'; startOverlay.classList.add('hidden'); endOverlay.classList.add('hidden'); boardWrap.classList.remove('hidden'); handWrap.classList.remove('hidden'); chatBtn.classList.remove('hidden'); buildSeats(); }
 function renderGame() {
   if (!view) return;
   buildSeats();
@@ -811,6 +833,55 @@ function showEnd(title, text) {
 }
 function endLocal(text) { phase = 'over'; document.getElementById('endTitle').textContent = 'Disconnected'; document.getElementById('endText').textContent = text; document.getElementById('againBtn').classList.add('hidden'); document.getElementById('endWait').classList.add('hidden'); endOverlay.classList.remove('hidden'); }
 
+// ----- Text chat + emojis (a backup for when voice is off) -----
+const chatBtn = document.getElementById('chatBtn');
+const chatPanel = document.getElementById('chatPanel');
+const chatLog = document.getElementById('chatLog');
+const chatInput = document.getElementById('chatInput');
+const chatSend = document.getElementById('chatSend');
+['👍', '😂', '😮', '🎉', '🔥', '🤔', '😅', '👋'].forEach(em => {
+  const b = document.createElement('button'); b.textContent = em; b.onclick = () => sendChat(em);
+  document.getElementById('emojiRow').appendChild(b);
+});
+chatBtn.onclick = () => { chatPanel.classList.toggle('hidden'); if (!chatPanel.classList.contains('hidden')) chatInput.focus(); };
+chatSend.onclick = () => { const v = chatInput.value.trim(); if (v) { sendChat(v); chatInput.value = ''; } };
+chatInput.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter') chatSend.onclick(); });
+chatInput.addEventListener('keyup', e => e.stopPropagation());
+function sendChat(text) {
+  text = ('' + text).slice(0, 80).trim(); if (!text) return;
+  if (isHost) { broadcast({ t: 'chat', id: myId, name: myName, text }); addChat(myName, text, myId); }
+  else if (hostConn && hostConn.open) hostConn.send({ t: 'chat', text });
+}
+function addChat(name, text, id) {
+  const line = document.createElement('div');
+  const w = document.createElement('span'); w.className = 'who'; w.textContent = name + ': ';
+  line.appendChild(w); line.appendChild(document.createTextNode(text));
+  chatLog.appendChild(line); chatLog.scrollTop = chatLog.scrollHeight;
+  while (chatLog.children.length > 40) chatLog.removeChild(chatLog.firstChild);
+  if (chatPanel.classList.contains('hidden')) say('💬 ' + name + ': ' + text);
+  if (id && id !== myId) showBubble(id, text);
+}
+// Floating speech bubble over a player's head
+const bubbles = [];
+function makeBubbleSprite(text) {
+  const c = document.createElement('canvas'); c.width = 256; c.height = 80; const x = c.getContext('2d');
+  const short = text.length > 16 ? text.slice(0, 15) + '…' : text;
+  x.fillStyle = 'rgba(255,255,255,0.96)'; x.strokeStyle = '#2a3350'; x.lineWidth = 3;
+  x.beginPath(); const rx = 6, ry = 6, w = 244, h = 56, r = 14;
+  x.moveTo(rx + r, ry); x.arcTo(rx + w, ry, rx + w, ry + h, r); x.arcTo(rx + w, ry + h, rx, ry + h, r); x.arcTo(rx, ry + h, rx, ry, r); x.arcTo(rx, ry, rx + w, ry, r); x.closePath(); x.fill(); x.stroke();
+  x.fillStyle = '#151a28'; x.font = '900 30px Nunito, sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
+  x.fillText(short, 128, 36);
+  const tex = new THREE.CanvasTexture(c);
+  const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, fog: false }));
+  spr.scale.set(1.9, 0.6, 1); return spr;
+}
+function showBubble(id, text) {
+  if (!avatars.get(id)) return;
+  for (let i = bubbles.length - 1; i >= 0; i--) if (bubbles[i].id === id) { scene.remove(bubbles[i].spr); bubbles.splice(i, 1); }
+  const spr = makeBubbleSprite(text); scene.add(spr);
+  bubbles.push({ spr, id, expire: performance.now() + 4500 });
+}
+
 // =====================================================================
 //  3D TILES ON THE TABLE (with a drop-in animation + a wooden clack)
 // =====================================================================
@@ -846,24 +917,45 @@ function makeTile3D(a, b) {
 }
 const boardTiles3D = new Map();  // key -> { mesh, tx, p, slot }
 function keyOf(t) { return Math.min(t[0], t[1]) + '-' + Math.max(t[0], t[1]); }
+// Serpentine layout: tiles run in a row, then turn a corner and run back the
+// other way on the next row, like a real domino chain snaking on the table.
+function snakeLayout(n) {
+  const PW = (TABLE_R - 0.28) * 2, PH = (TABLE_R - 0.28) * 2;
+  let scl = 0.4, cols = 1, rows = 1;
+  for (let it = 0; it < 12; it++) {
+    cols = Math.max(1, Math.floor(PW / (scl * 1.02)));
+    rows = Math.ceil(n / cols);
+    if (rows * (scl * 0.62) <= PH || scl < 0.14) break;
+    scl *= 0.9;
+  }
+  const sx = scl * 1.02, sz = scl * 0.62;
+  const startZ = -(rows - 1) * sz / 2;
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const row = Math.floor(i / cols), col = i % cols;
+    const countInRow = Math.min(cols, n - row * cols);
+    const rowStartX = -(countInRow - 1) * sx / 2;
+    const posInRow = (row % 2 === 0) ? col : (countInRow - 1 - col);
+    out.push({ x: rowStartX + posInRow * sx, z: startZ + row * sz, scl });
+  }
+  return out;
+}
 function updateBoard3D(board) {
-  const n = board.length;
-  const feltW = (TABLE_R - 0.35) * 2;
-  const slot = n ? Math.min(0.38, feltW / n) : 0.38;
+  const pos = snakeLayout(board.length);
   const present = new Set();
   board.forEach((t, i) => {
     const key = keyOf(t); present.add(key);
-    const x = (i - (n - 1) / 2) * slot;
+    const L = pos[i];
     let e = boardTiles3D.get(key);
     if (!e) {
       const mesh = makeTile3D(t[0], t[1]);
-      const s = slot * 0.92; mesh.scale.setScalar(s);
-      mesh.position.set(x, TABLE_H + 1.6, 0);
+      mesh.scale.setScalar(L.scl);
+      mesh.position.set(L.x, TABLE_H + 1.6, L.z);
       scene.add(mesh);
-      e = { mesh, tx: x, p: 0, slot }; boardTiles3D.set(key, e);
+      e = { mesh, tx: L.x, tz: L.z, tscl: L.scl, p: 0 }; boardTiles3D.set(key, e);
       playClack();
     }
-    e.tx = x; e.slot = slot;
+    e.tx = L.x; e.tz = L.z; e.tscl = L.scl;
   });
   boardTiles3D.forEach((e, key) => { if (!present.has(key)) { scene.remove(e.mesh); boardTiles3D.delete(key); } });
 }
@@ -902,6 +994,14 @@ function animate() {
     a.group.rotation.z = Math.sin(t * 0.9 + a.seed) * 0.02;
   });
 
+  // Floating chat bubbles follow their player, then vanish
+  const now = performance.now();
+  for (let i = bubbles.length - 1; i >= 0; i--) {
+    const b = bubbles[i], av = avatars.get(b.id);
+    if (!av || now > b.expire) { scene.remove(b.spr); bubbles.splice(i, 1); continue; }
+    b.spr.position.set(av.group.position.x, 2.4, av.group.position.z);
+  }
+
   // Tiles settling onto the table
   const ty = TABLE_H + 0.11;
   boardTiles3D.forEach(e => {
@@ -909,11 +1009,10 @@ function animate() {
     const ease = 1 - (1 - e.p) * (1 - e.p);
     const k = Math.min(1, dt * 8);
     e.mesh.position.x += (e.tx - e.mesh.position.x) * k;
-    e.mesh.position.z += (0 - e.mesh.position.z) * k;
+    e.mesh.position.z += (e.tz - e.mesh.position.z) * k;
     e.mesh.position.y = ty + (1 - ease) * 1.5;
     e.mesh.rotation.z = (1 - ease) * 0.5;
-    const s = e.slot * 0.92;
-    const cur = e.mesh.scale.x + (s - e.mesh.scale.x) * k;
+    const cur = e.mesh.scale.x + (e.tscl - e.mesh.scale.x) * k;
     e.mesh.scale.setScalar(cur);
   });
 
@@ -936,7 +1035,7 @@ let topView = false;
 const viewBtn = document.getElementById('viewBtn');
 function setViewBtn() { viewBtn.textContent = topView ? '🔍 Seat view' : '🔍 Overhead view'; }
 viewBtn.onclick = () => { topView = !topView; setViewBtn(); };
-addEventListener('keydown', e => { if (e.key.toLowerCase() === 'v') { topView = !topView; setViewBtn(); } });
+addEventListener('keydown', e => { if (typingInChat()) return; if (e.key.toLowerCase() === 'v') { topView = !topView; setViewBtn(); } });
 buildSeats();
 animate();
 </script>
