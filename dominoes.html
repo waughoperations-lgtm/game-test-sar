@@ -1005,6 +1005,8 @@ function snakeLayout(n) {
   const occupied = new Set();
   const result = [];
 
+  if (n <= 0) return result;   // empty board (start of round) — nothing to lay out
+
   class Domino {
     constructor(idx, x, z) {
       this.idx = idx;
