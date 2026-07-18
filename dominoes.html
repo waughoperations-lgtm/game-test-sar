@@ -997,40 +997,47 @@ function makeTile3D(a, b) {
 }
 const boardTiles3D = new Map();  // key -> { mesh, tx, p, slot }
 function keyOf(t) { return Math.min(t[0], t[1]) + '-' + Math.max(t[0], t[1]); }
-// Traditional chain layout: tiles flow in a winding path across the table
-// like a real domino chain, moving left-right then up-down in rows
+// Chain layout: first domino at center, chain builds outward
 function snakeLayout(n) {
   const out = [];
-  let scl = 0.38;
-  const tileWidth = scl * 1.02;
-  const tileHeight = scl * 0.62;
+  const scl = 0.38;
+  const spacing = scl * 1.05;  // space between domino centers
 
-  // Calculate how many tiles fit per row (leaving margins from table edge)
-  const maxWidth = (TABLE_R - 0.3) * 2;
-  let tilesPerRow = Math.max(3, Math.floor(maxWidth / tileWidth));
+  // First domino at center
+  out.push({ x: 0, z: 0, scl });
 
-  let row = 0, col = 0;
+  if (n === 1) return out;
 
-  for (let i = 0; i < n; i++) {
-    // Calculate position based on row and column
-    const startX = -(tilesPerRow - 1) * tileWidth / 2;
-    const rowHeight = tileHeight * 0.7;  // vertical spacing between rows
-    const maxRows = Math.ceil(n / tilesPerRow);
-    const startZ = (maxRows - 1) * rowHeight / 2;
+  // Build chain outward from center in a winding pattern
+  let x = 0, z = -spacing;  // start going downward
+  let direction = 0;  // 0=down, 1=right, 2=up, 3=left
+  const directionVectors = [
+    { dx: 0, dz: spacing },   // down
+    { dx: spacing, dz: 0 },   // right
+    { dx: 0, dz: -spacing },  // up
+    { dx: -spacing, dz: 0 }   // left
+  ];
 
-    // Alternate direction each row (snake pattern)
-    const xPos = (row % 2 === 0)
-      ? startX + col * tileWidth
-      : startX + (tilesPerRow - 1 - col) * tileWidth;
+  let tilesInCurrentSegment = 1;
+  let tilesInSegment = 0;
+  let segmentChanges = 0;
 
-    const zPos = startZ - row * rowHeight;
+  for (let i = 1; i < n; i++) {
+    out.push({ x, z, scl });
 
-    out.push({ x: xPos, z: zPos, scl });
+    // Move in current direction
+    const dir = directionVectors[direction];
+    x += dir.dx;
+    z += dir.dz;
 
-    col++;
-    if (col >= tilesPerRow) {
-      col = 0;
-      row++;
+    tilesInSegment++;
+    if (tilesInSegment >= tilesInCurrentSegment) {
+      tilesInSegment = 0;
+      direction = (direction + 1) % 4;  // turn
+      segmentChanges++;
+      if (segmentChanges % 2 === 0) {
+        tilesInCurrentSegment++;  // increase segment length every other turn
+      }
     }
   }
 
