@@ -997,51 +997,120 @@ function makeTile3D(a, b) {
 }
 const boardTiles3D = new Map();  // key -> { mesh, tx, p, slot }
 function keyOf(t) { return Math.min(t[0], t[1]) + '-' + Math.max(t[0], t[1]); }
-// Chain layout: first domino at center, chain builds outward
+// Center-outward branching layout: compact, balanced domino pattern
+// First domino at center, expands with alternating left/right and creates perpendicular branches
 function snakeLayout(n) {
-  const out = [];
   const scl = 0.38;
-  const spacing = scl * 1.05;  // space between domino centers
+  const spacing = scl * 1.05;
+  const occupied = new Set();
+  const result = [];
 
-  // First domino at center
-  out.push({ x: 0, z: 0, scl });
+  class Domino {
+    constructor(idx, x, z) {
+      this.idx = idx;
+      this.x = x;
+      this.z = z;
+      this.children = [];
+      this.parent = null;
+    }
+    key() { return Math.round(this.x * 100) + ',' + Math.round(this.z * 100); }
+  }
 
-  if (n === 1) return out;
+  const dominoes = [];
+  for (let i = 0; i < n; i++) dominoes.push(new Domino(i, 0, 0));
 
-  // Build chain outward from center in a winding pattern
-  let x = 0, z = -spacing;  // start going downward
-  let direction = 0;  // 0=down, 1=right, 2=up, 3=left
-  const directionVectors = [
-    { dx: 0, dz: spacing },   // down
-    { dx: spacing, dz: 0 },   // right
-    { dx: 0, dz: -spacing },  // up
-    { dx: -spacing, dz: 0 }   // left
-  ];
+  // Place first domino at center
+  dominoes[0].x = 0;
+  dominoes[0].z = 0;
+  occupied.add(dominoes[0].key());
 
-  let tilesInCurrentSegment = 1;
-  let tilesInSegment = 0;
-  let segmentChanges = 0;
+  if (n === 1) return [{ x: 0, z: 0, scl }];
+
+  // Build branches: left/right main line, then vertical branches
+  let placed = 1;
+  let leftCount = 0, rightCount = 0;
+  const branchLength = 4;
+  let branchPhase = 0;
+  const branches = [];  // { startIdx, direction, length }
 
   for (let i = 1; i < n; i++) {
-    out.push({ x, z, scl });
+    let placed_this = false;
 
-    // Move in current direction
-    const dir = directionVectors[direction];
-    x += dir.dx;
-    z += dir.dz;
+    // Extend main left-right line first (alternating)
+    if (leftCount < branchLength && rightCount < branchLength) {
+      if (leftCount === rightCount) {
+        // Extend left
+        if (tryPlaceHorizontal(i, -1)) { leftCount++; placed_this = true; }
+        else if (tryPlaceHorizontal(i, 1)) { rightCount++; placed_this = true; }
+      } else {
+        // Extend right
+        if (tryPlaceHorizontal(i, 1)) { rightCount++; placed_this = true; }
+        else if (tryPlaceHorizontal(i, -1)) { leftCount++; placed_this = true; }
+      }
+    }
 
-    tilesInSegment++;
-    if (tilesInSegment >= tilesInCurrentSegment) {
-      tilesInSegment = 0;
-      direction = (direction + 1) % 4;  // turn
-      segmentChanges++;
-      if (segmentChanges % 2 === 0) {
-        tilesInCurrentSegment++;  // increase segment length every other turn
+    // Create vertical branches from interior dominoes
+    if (!placed_this && leftCount >= branchLength && rightCount >= branchLength) {
+      const interiorIdx = Math.floor(n / 2);
+      if (interiorIdx > 0 && interiorIdx < i) {
+        if (tryPlaceVertical(i, interiorIdx, 1)) placed_this = true;
+        else if (tryPlaceVertical(i, interiorIdx, -1)) placed_this = true;
+      }
+    }
+
+    if (!placed_this) {
+      // Fallback: try any available direction
+      for (const dir of [[-1, 0], [1, 0], [0, 1], [0, -1]]) {
+        const nx = dominoes[i - 1].x + dir[0] * spacing;
+        const nz = dominoes[i - 1].z + dir[1] * spacing;
+        if (!occupied.has(coordKey(nx, nz))) {
+          dominoes[i].x = nx;
+          dominoes[i].z = nz;
+          occupied.add(dominoes[i].key());
+          placed_this = true;
+          break;
+        }
       }
     }
   }
 
-  return out;
+  // Convert to output format
+  for (const d of dominoes) {
+    result.push({ x: d.x, z: d.z, scl });
+  }
+  return result;
+
+  function tryPlaceHorizontal(idx, dir) {
+    const prevX = dominoes[idx - 1].x;
+    const prevZ = dominoes[idx - 1].z;
+    const nx = prevX + dir * spacing;
+    const nz = prevZ;
+    if (!occupied.has(coordKey(nx, nz))) {
+      dominoes[idx].x = nx;
+      dominoes[idx].z = nz;
+      occupied.add(dominoes[idx].key());
+      return true;
+    }
+    return false;
+  }
+
+  function tryPlaceVertical(idx, fromIdx, dir) {
+    const fromX = dominoes[fromIdx].x;
+    const fromZ = dominoes[fromIdx].z;
+    const nx = fromX;
+    const nz = fromZ + dir * spacing;
+    if (!occupied.has(coordKey(nx, nz))) {
+      dominoes[idx].x = nx;
+      dominoes[idx].z = nz;
+      occupied.add(dominoes[idx].key());
+      return true;
+    }
+    return false;
+  }
+
+  function coordKey(x, z) {
+    return Math.round(x * 100) + ',' + Math.round(z * 100);
+  }
 }
 let lastTileKey = null;   // track the winning tile for slam effect
 function updateBoard3D(board) {
